@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import calendar
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -11,6 +13,7 @@ from ..constants import (
     APP_TITLE,
     DEFAULT_DB_PATH,
     IMAGES_MODELS_DIR,
+    MODEL_1_VISUAL_NAME,
     REPORTS_DIR,
 )
 from ..costing_abc import run_model_1_calculation
@@ -25,7 +28,7 @@ from ..reports import generate_all_reports
 
 IMPORTED_TABLES = [
     "empresas",
-    "periodo",
+    "Periodo",
     "modelos_costeo",
     "objetos_costo",
     "ordenes_trabajo",
@@ -61,17 +64,23 @@ class CostosABCApp(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("1280x780")
         self.minsize(1080, 680)
+        self.after(0, self.maximize_window)
         self.db_path = Path(db_path)
         self.excel_path = tk.StringVar(value="")
         self.status_text = tk.StringVar(value="Seleccione, valide e importe un Excel maestro para iniciar.")
         self.model_var = tk.StringVar(value="")
+        self.period_var = tk.StringVar(value="")
         self.table_var = tk.StringVar(value=IMPORTED_TABLES[0])
         self.indirect_cost_table_var = tk.StringVar(value=INDIRECT_COST_TABLES[0])
         self.model_statuses: list[CostingModelStatus] = []
+        self.period_options: list[dict] = []
+        self.active_period: dict | None = None
         self.trees: dict[str, ttk.Treeview] = {}
         self.tree_row_data: dict[str, dict[str, dict]] = {}
         self.module_tabs: list[tuple[ttk.Frame, str]] = []
         self.dashboard_chart_canvas = None
+        self.dashboard_scroll_canvas: tk.Canvas | None = None
+        self.dashboard_scroll_content: ttk.Frame | None = None
         self.dashboard_kpis: dict[str, tk.Label] = {}
         self.dashboard_header_status: tk.Label | None = None
         self.dashboard_period_label: tk.Label | None = None
@@ -81,6 +90,7 @@ class CostosABCApp(tk.Tk):
         self.proposal_text: tk.Text | None = None
         self.criteria_image: tk.PhotoImage | None = None
         self.criteria_source_image: tk.PhotoImage | None = None
+        self.criteria_image_path: Path | None = None
         self.criteria_image_model_code: str | None = None
         self.is_excel_validated = False
         self.is_excel_imported = False
@@ -91,6 +101,15 @@ class CostosABCApp(tk.Tk):
         initialize_database(self.db_path)
         self.reset_model_selector()
 
+    def maximize_window(self) -> None:
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            try:
+                self.attributes("-zoomed", True)
+            except tk.TclError:
+                self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+
     def _configure_style(self) -> None:
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -100,19 +119,46 @@ class CostosABCApp(tk.Tk):
         style.configure("Section.TLabelframe.Label", font=("Segoe UI", 10, "bold"))
         style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
         style.configure("Treeview", rowheight=24)
+        style.configure(
+            "Dashboard.Vertical.TScrollbar",
+            background="#2563EB",
+            bordercolor="#93C5FD",
+            arrowcolor="#0F172A",
+            darkcolor="#1D4ED8",
+            lightcolor="#60A5FA",
+            troughcolor="#DBEAFE",
+            width=18,
+            arrowsize=14,
+        )
+        style.map(
+            "Dashboard.Vertical.TScrollbar",
+            background=[("active", "#1D4ED8"), ("pressed", "#0F766E")],
+        )
 
     def _build_layout(self) -> None:
         root = ttk.Frame(self, padding=12)
         root.pack(fill=tk.BOTH, expand=True)
 
-        header = ttk.Frame(root)
-        header.pack(fill=tk.X)
-        ttk.Label(header, text="Sistema Informatico de Costos ABC - Frenosa", style="Title.TLabel").pack(anchor=tk.W)
+        self.header_frame = ttk.Frame(root)
+        self.header_frame.pack(fill=tk.X)
+        self.header_frame.columnconfigure(0, weight=1)
+        ttk.Label(self.header_frame, text="Sistema Informatico de Costos ABC - Frenosa", style="Title.TLabel").grid(
+            row=0,
+            column=0,
+            sticky=tk.W,
+        )
         ttk.Label(
-            header,
+            self.header_frame,
             text="Modelo ABC por Ordenes de Trabajo | Datos importados, calculos generados y reportes exportados.",
             style="Subtitle.TLabel",
-        ).pack(anchor=tk.W, pady=(2, 8))
+        ).grid(row=1, column=0, sticky=tk.W, pady=(2, 8))
+        self.back_home_button = ttk.Button(
+            self.header_frame,
+            text="Volver a pantalla inicial",
+            command=self.show_home_screen,
+        )
+        self.back_home_button.grid(row=0, column=1, rowspan=2, sticky=tk.E, padx=(12, 0))
+        self.back_home_button.grid_remove()
 
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill=tk.BOTH, expand=True)
@@ -146,22 +192,50 @@ class CostosABCApp(tk.Tk):
         ttk.Button(import_box, text="Validar estructura", command=self.validate_excel).grid(row=0, column=3, padx=4)
         ttk.Button(import_box, text="Importar a SQLite", command=self.import_excel).grid(row=0, column=4, padx=4)
 
-        model_box = ttk.LabelFrame(tab, text="Seleccion de modelo de costeo", padding=10, style="Section.TLabelframe")
-        model_box.pack(fill=tk.X, pady=12)
-        self.model_combo = ttk.Combobox(model_box, state="readonly", textvariable=self.model_var, width=72)
+        self.period_box = ttk.LabelFrame(tab, text="Seleccion de periodo", padding=10, style="Section.TLabelframe")
+        self.period_box.pack(fill=tk.X, pady=(12, 0))
+        ttk.Label(self.period_box, text="Periodo activo:").grid(row=0, column=0, sticky=tk.W)
+        self.period_combo = ttk.Combobox(self.period_box, state="disabled", textvariable=self.period_var, width=72)
+        self.period_combo.grid(row=0, column=1, sticky=tk.EW, padx=8)
+        self.period_combo.bind("<<ComboboxSelected>>", lambda _event: self.select_active_period())
+        self.create_period_button = ttk.Button(
+            self.period_box,
+            text="Crear nuevo periodo",
+            command=self.open_create_period_dialog,
+            state=tk.DISABLED,
+        )
+        self.create_period_button.grid(row=0, column=2, padx=4)
+        self.period_status = ttk.Label(
+            self.period_box,
+            text="Importe el Excel maestro para seleccionar o crear un periodo.",
+            style="Subtitle.TLabel",
+        )
+        self.period_status.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(8, 0))
+        self.period_box.columnconfigure(1, weight=1)
+
+        self.model_box = ttk.LabelFrame(tab, text="Seleccion de modelo de costeo", padding=10, style="Section.TLabelframe")
+        self.model_box.pack(fill=tk.X, pady=12)
+        self.model_combo = ttk.Combobox(self.model_box, state="readonly", textvariable=self.model_var, width=72)
         self.model_combo.grid(row=0, column=0, sticky=tk.W)
         self.model_combo.bind("<<ComboboxSelected>>", lambda _event: self.show_selected_model_reason())
-        self.execute_button = ttk.Button(model_box, text="Ejecutar calculo", command=self.execute_calculation)
+        self.execute_button = ttk.Button(self.model_box, text="Ejecutar calculo", command=self.execute_calculation)
         self.execute_button.grid(row=0, column=1, padx=8)
-        self.model_reason = tk.Text(model_box, height=5, wrap=tk.WORD)
+        self.model_reason = tk.Text(self.model_box, height=5, wrap=tk.WORD)
         self.model_reason.grid(row=1, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
-        model_box.columnconfigure(0, weight=1)
+        self.model_box.columnconfigure(0, weight=1)
 
-        note = ttk.LabelFrame(tab, text="Grafico del modelo de costeo", padding=10, style="Section.TLabelframe")
-        note.pack(fill=tk.BOTH, expand=True, pady=12)
-        self.criteria_canvas = tk.Canvas(note, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
+        self.criteria_box = ttk.LabelFrame(tab, text="Grafico del modelo de costeo", padding=10, style="Section.TLabelframe")
+        self.criteria_box.pack(fill=tk.BOTH, expand=True, pady=12)
+        self.criteria_canvas = tk.Canvas(
+            self.criteria_box,
+            bg="#FFFFFF",
+            height=430,
+            highlightthickness=1,
+            highlightbackground="#CBD5E1",
+        )
         self.criteria_canvas.pack(fill=tk.BOTH, expand=True)
         self.criteria_canvas.bind("<Configure>", lambda _event: self.render_model_diagram())
+        self.hide_model_selection()
         return tab
 
     def _build_data_tab(self) -> None:
@@ -170,7 +244,6 @@ class CostosABCApp(tk.Tk):
         self.module_tabs.append((tab, "Datos importados"))
         top = ttk.Frame(tab)
         top.pack(fill=tk.X)
-        ttk.Button(top, text="Volver a pantalla inicial", command=self.show_home_screen).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Label(top, text="Tabla:").pack(side=tk.LEFT)
         combo = ttk.Combobox(top, textvariable=self.table_var, values=IMPORTED_TABLES, state="readonly", width=42)
         combo.pack(side=tk.LEFT, padx=8)
@@ -203,13 +276,42 @@ class CostosABCApp(tk.Tk):
             self.trees[key].bind("<ButtonRelease-1>", lambda event, module_key=key: self.open_calculation_detail_from_event(module_key, event))
 
     def _build_dashboard_tab(self) -> None:
-        tab = ttk.Frame(self.notebook, padding=12)
+        tab = ttk.Frame(self.notebook, padding=0)
         self.notebook.add(tab, text="Dashboard")
         self.module_tabs.append((tab, "Dashboard"))
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(3, weight=1)
+        tab.rowconfigure(0, weight=1)
 
-        header = tk.Frame(tab, bg="#0F172A", padx=16, pady=12)
+        dashboard_canvas = tk.Canvas(tab, bg="#F8FAFC", highlightthickness=0)
+        dashboard_scroll = ttk.Scrollbar(
+            tab,
+            orient=tk.VERTICAL,
+            command=dashboard_canvas.yview,
+            style="Dashboard.Vertical.TScrollbar",
+        )
+        dashboard_canvas.configure(yscrollcommand=dashboard_scroll.set)
+        dashboard_canvas.grid(row=0, column=0, sticky="nsew")
+        dashboard_scroll.grid(row=0, column=1, sticky="ns")
+        self.dashboard_scroll_canvas = dashboard_canvas
+
+        content = ttk.Frame(dashboard_canvas, padding=12)
+        content_window = dashboard_canvas.create_window((0, 0), window=content, anchor="nw")
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(3, weight=1, minsize=620)
+        self.dashboard_scroll_content = content
+
+        def update_dashboard_scrollregion(_event=None) -> None:
+            self.refresh_dashboard_scrollregion()
+
+        def resize_dashboard_content(event) -> None:
+            dashboard_canvas.itemconfigure(content_window, width=event.width)
+            self.refresh_dashboard_scrollregion()
+
+        content.bind("<Configure>", update_dashboard_scrollregion)
+        dashboard_canvas.bind("<Configure>", resize_dashboard_content)
+        dashboard_canvas.bind("<MouseWheel>", self.scroll_dashboard, add="+")
+
+        header = tk.Frame(content, bg="#0F172A", padx=16, pady=12)
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         tk.Label(
@@ -238,7 +340,7 @@ class CostosABCApp(tk.Tk):
         )
         self.dashboard_header_status.grid(row=0, column=1, rowspan=2, sticky="e")
 
-        kpi_frame = tk.Frame(tab, bg="#F8FAFC")
+        kpi_frame = tk.Frame(content, bg="#F8FAFC")
         kpi_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
         for index, (key, title, accent, caption) in enumerate(
             [
@@ -251,11 +353,11 @@ class CostosABCApp(tk.Tk):
             self.create_dashboard_kpi(kpi_frame, index, key, title, accent, caption)
             kpi_frame.columnconfigure(index, weight=1)
 
-        self.dashboard_message = ttk.Label(tab, text="", style="Subtitle.TLabel")
+        self.dashboard_message = ttk.Label(content, text="", style="Subtitle.TLabel")
         self.dashboard_message.grid(row=2, column=0, sticky="w", pady=(8, 4))
-        self.dashboard_chart_frame = tk.Frame(tab, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
-        self.dashboard_chart_frame.grid(row=3, column=0, sticky="nsew")
-        insights = ttk.LabelFrame(tab, text="Alertas y recomendaciones", padding=8, style="Section.TLabelframe")
+        self.dashboard_chart_frame = tk.Frame(content, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
+        self.dashboard_chart_frame.grid(row=3, column=0, sticky="nsew", pady=(2, 0))
+        insights = ttk.LabelFrame(content, text="Alertas y recomendaciones", padding=8, style="Section.TLabelframe")
         insights.grid(row=4, column=0, sticky="ew", pady=(8, 0))
         self.dashboard_insights_text = tk.Text(
             insights,
@@ -266,11 +368,30 @@ class CostosABCApp(tk.Tk):
             font=("Segoe UI", 9),
             relief=tk.FLAT,
         )
-        insights_scroll = ttk.Scrollbar(insights, orient=tk.VERTICAL, command=self.dashboard_insights_text.yview)
-        self.dashboard_insights_text.configure(yscrollcommand=insights_scroll.set)
         self.dashboard_insights_text.grid(row=0, column=0, sticky="ew")
-        insights_scroll.grid(row=0, column=1, sticky="ns")
         insights.columnconfigure(0, weight=1)
+        self.bind_dashboard_scroll(content)
+
+    def scroll_dashboard(self, event) -> str:
+        if self.dashboard_scroll_canvas is None:
+            return "break"
+        delta = getattr(event, "delta", 0)
+        if delta:
+            steps = int(-1 * (delta / 120))
+            if steps == 0:
+                steps = -1 if delta > 0 else 1
+            self.dashboard_scroll_canvas.yview_scroll(steps, "units")
+        return "break"
+
+    def bind_dashboard_scroll(self, widget) -> None:
+        widget.bind("<MouseWheel>", self.scroll_dashboard, add="+")
+        for child in widget.winfo_children():
+            self.bind_dashboard_scroll(child)
+
+    def refresh_dashboard_scrollregion(self) -> None:
+        if self.dashboard_scroll_canvas is None:
+            return
+        self.dashboard_scroll_canvas.configure(scrollregion=self.dashboard_scroll_canvas.bbox("all"))
 
     def create_dashboard_kpi(self, parent, index: int, key: str, title: str, accent: str, caption: str) -> None:
         card = tk.Frame(parent, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
@@ -345,7 +466,14 @@ class CostosABCApp(tk.Tk):
         self.proposal_text.configure(yscrollcommand=scroll.set)
         self.proposal_text.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
+        self.reset_improvement_proposal()
+
+    def reset_improvement_proposal(self) -> None:
+        if self.proposal_text is None:
+            return
+        self.proposal_text.delete("1.0", tk.END)
         self.proposal_text.insert("1.0", "Ejecute el calculo ABC y genere la propuesta base.")
+        self.proposal_text.edit_reset()
 
     def _make_tree(self, parent) -> ttk.Treeview:
         frame = ttk.Frame(parent)
@@ -372,6 +500,7 @@ class CostosABCApp(tk.Tk):
             self.is_excel_imported = False
             self.validated_excel_path = None
             self.imported_excel_path = None
+            self.reset_period_selector()
             self.reset_model_selector()
             self.show_home_screen()
             self.status_text.set("Excel seleccionado. Valide la estructura antes de importar.")
@@ -381,7 +510,14 @@ class CostosABCApp(tk.Tk):
             messagebox.showwarning("Validacion", "Primero seleccione un Excel maestro.")
             self.status_text.set("No hay Excel seleccionado.")
             return
-        result = validate_workbook(self.excel_path.get())
+        try:
+            result = validate_workbook(self.excel_path.get())
+        except Exception as exc:
+            self.is_excel_validated = False
+            self.validated_excel_path = None
+            messagebox.showerror("Validacion", f"No se pudo validar el Excel maestro:\n{exc}")
+            self.status_text.set(f"Error de validacion: {exc}")
+            return
         if result.ok:
             self.is_excel_validated = True
             self.validated_excel_path = self.excel_path.get()
@@ -409,18 +545,24 @@ class CostosABCApp(tk.Tk):
             if result.ok:
                 self.is_excel_imported = True
                 self.imported_excel_path = self.excel_path.get()
-                self.refresh_model_statuses()
+                self.reset_model_selector()
+                self.hide_model_selection()
+                self.load_period_options()
                 self.load_selected_imported_table()
                 messagebox.showinfo("Importacion", "Excel importado correctamente a SQLite local.")
             else:
                 self.is_excel_imported = False
                 self.imported_excel_path = None
+                self.reset_period_selector()
+                self.hide_model_selection()
                 self.reset_model_selector()
                 messagebox.showerror("Importacion", "\n".join(issue.message for issue in result.errors[:8]))
             self.status_text.set(f"Importacion batch {result.batch_id}: {result.imported_rows}")
         except Exception as exc:
             self.is_excel_imported = False
             self.imported_excel_path = None
+            self.reset_period_selector()
+            self.hide_model_selection()
             self.reset_model_selector()
             messagebox.showerror("Importacion", str(exc))
             self.status_text.set(f"Error de importacion: {exc}")
@@ -429,9 +571,16 @@ class CostosABCApp(tk.Tk):
         if not self.is_excel_imported:
             self.reset_model_selector()
             return
-        self.model_statuses = [
-            item for item in evaluate_models(self.db_path) if item.code != "MODELO_3"
-        ]
+        if self.active_period is None:
+            self.reset_model_selector()
+            self.hide_model_selection()
+            return
+        if self.active_period.get("origen_periodo") == "MANUAL":
+            self.model_statuses = [self.manual_period_model_1_status()]
+        else:
+            self.model_statuses = [
+                item for item in evaluate_models(self.db_path) if item.code != "MODELO_3"
+            ]
         values = [
             f"{item.code} | {item.label}: {item.status} - {item.visual_name}"
             for item in self.model_statuses
@@ -441,11 +590,324 @@ class CostosABCApp(tk.Tk):
         if values:
             self.model_combo.current(0)
             self.model_var.set(values[0])
+        self.show_model_selection()
         self.show_selected_model_reason()
+
+    def reset_period_selector(self) -> None:
+        self.period_options = []
+        self.active_period = None
+        self.period_var.set("")
+        if hasattr(self, "period_combo"):
+            self.period_combo.configure(values=[], state=tk.DISABLED)
+        if hasattr(self, "create_period_button"):
+            self.create_period_button.configure(state=tk.DISABLED)
+        if hasattr(self, "period_status"):
+            self.period_status.configure(text="Importe el Excel maestro para seleccionar o crear un periodo.")
+        self.reset_improvement_proposal()
+
+    def load_period_options(self) -> None:
+        with db_session(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    periodo_id,
+                    empresa_id,
+                    periodo,
+                    tipo_periodo,
+                    fecha_inicio,
+                    fecha_fin,
+                    descripcion,
+                    fuente,
+                    COALESCE(origen_periodo, 'IMPORTADO') AS origen_periodo
+                FROM periodo
+                ORDER BY fecha_inicio, periodo_id
+                """
+            ).fetchall()
+        self.period_options = []
+        for row in rows:
+            item = dict(row)
+            item["display"] = self.format_period_option(item)
+            self.period_options.append(item)
+        values = [item["display"] for item in self.period_options]
+        self.period_combo.configure(values=values, state="readonly" if values else tk.DISABLED)
+        self.create_period_button.configure(state=tk.NORMAL)
+        self.active_period = None
+        self.period_var.set("")
+        self.hide_model_selection()
+        self.reset_improvement_proposal()
+        if values:
+            self.period_status.configure(text="Seleccione un periodo existente o cree un nuevo periodo.")
+        else:
+            self.period_status.configure(text="No hay periodos cargados. Cree un nuevo periodo para continuar.")
+
+    def format_period_option(self, period: dict) -> str:
+        code = period.get("periodo_id") or ""
+        name = period.get("periodo") or "Periodo sin nombre"
+        period_type = period.get("tipo_periodo") or ""
+        start = period.get("fecha_inicio") or ""
+        end = period.get("fecha_fin") or ""
+        origin = "Manual" if period.get("origen_periodo") == "MANUAL" else "Excel"
+        date_range = f"{start} a {end}" if start or end else "sin fechas"
+        return f"{code} | {name} | {period_type} | {date_range} | {origin}"
+
+    def select_active_period(self) -> None:
+        selected = self.period_var.get()
+        self.active_period = next((item for item in self.period_options if item["display"] == selected), None)
+        if self.active_period is None:
+            self.hide_model_selection()
+            self.reset_model_selector()
+            self.reset_improvement_proposal()
+            self.period_status.configure(text="Seleccione un periodo valido para continuar.")
+            return
+        self.reset_improvement_proposal()
+        self.period_status.configure(text=f"Periodo activo: {selected}")
+        self.refresh_model_statuses()
+        self.status_text.set(f"Periodo activo seleccionado: {selected}")
+
+    def manual_period_model_1_status(self) -> CostingModelStatus:
+        return CostingModelStatus(
+            code="MODELO_1",
+            label="Modelo 1",
+            visual_name=MODEL_1_VISUAL_NAME,
+            status="Disponible",
+            available=True,
+            reason=(
+                "Disponible para periodo creado manualmente: se considera informacion estimada o proyectada, "
+                "tomando como referencia la estructura y datos base del Excel maestro importado. "
+                "No se muestran MODELO_2 ni MODELO_3 porque el periodo nuevo no tiene datos suficientes para modelos mas complejos."
+            ),
+            flow="Proceso 1: EC -> AC; Proceso 2 AC-OT (Produccion); Proceso 2 AC-OT (Soporte)",
+        )
+
+    def open_create_period_dialog(self) -> None:
+        if not self.is_excel_imported:
+            messagebox.showwarning("Periodo", "Primero importe el Excel maestro a SQLite.")
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Crear nuevo periodo")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        fields = {
+            "periodo_id": tk.StringVar(),
+            "periodo": tk.StringVar(),
+            "tipo_periodo": tk.StringVar(value="mensual"),
+            "fecha_inicio": tk.StringVar(),
+            "fecha_fin": tk.StringVar(),
+            "descripcion": tk.StringVar(value="Periodo creado manualmente para estimacion o proyeccion."),
+        }
+        labels = [
+            ("Codigo del periodo", "periodo_id"),
+            ("Nombre del periodo", "periodo"),
+            ("Tipo de periodo", "tipo_periodo"),
+            ("Fecha de inicio (YYYY-MM-DD)", "fecha_inicio"),
+            ("Fecha de fin (YYYY-MM-DD)", "fecha_fin"),
+            ("Descripcion", "descripcion"),
+        ]
+        body = ttk.Frame(dialog, padding=12)
+        body.grid(row=0, column=0, sticky="nsew")
+        for row, (label, key) in enumerate(labels):
+            ttk.Label(body, text=label + ":").grid(row=row, column=0, sticky=tk.W, pady=4)
+            if key == "tipo_periodo":
+                widget = ttk.Combobox(
+                    body,
+                    textvariable=fields[key],
+                    values=["mensual", "bimestral", "trimestral", "cuatrimestral", "semestral", "anual"],
+                    state="readonly",
+                    width=32,
+                )
+            elif key in {"fecha_inicio", "fecha_fin"}:
+                widget = ttk.Frame(body)
+                entry = ttk.Entry(widget, textvariable=fields[key], width=32)
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                ttk.Button(
+                    widget,
+                    text="Calendario",
+                    command=lambda field=fields[key]: self.open_calendar_picker(dialog, field),
+                ).pack(side=tk.LEFT, padx=(6, 0))
+            else:
+                widget = ttk.Entry(body, textvariable=fields[key], width=44)
+            widget.grid(row=row, column=1, sticky=tk.EW, padx=(8, 0), pady=4)
+        body.columnconfigure(1, weight=1)
+        actions = ttk.Frame(body)
+        actions.grid(row=len(labels), column=0, columnspan=2, sticky=tk.E, pady=(10, 0))
+        ttk.Button(actions, text="Cancelar", command=dialog.destroy).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(actions, text="Guardar periodo", command=lambda: self.save_new_period(dialog, fields)).pack(side=tk.RIGHT)
+
+    def open_calendar_picker(self, parent: tk.Toplevel, target_var: tk.StringVar) -> None:
+        try:
+            current = datetime.strptime(target_var.get(), "%Y-%m-%d").date()
+        except ValueError:
+            current = datetime.now().date()
+        state = {"year": current.year, "month": current.month}
+        picker = tk.Toplevel(parent)
+        picker.title("Seleccionar fecha")
+        picker.transient(parent)
+        picker.grab_set()
+        picker.resizable(False, False)
+        content = ttk.Frame(picker, padding=10)
+        content.grid(row=0, column=0)
+        month_names = [
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+        ]
+        month_var = tk.StringVar(value=month_names[current.month - 1])
+        year_var = tk.StringVar(value=str(current.year))
+        header = ttk.Frame(content)
+        header.grid(row=0, column=0, columnspan=7, sticky=tk.EW)
+        ttk.Button(header, text="<", width=3, command=lambda: move_month(-1)).pack(side=tk.LEFT)
+        month_combo = ttk.Combobox(header, textvariable=month_var, values=month_names, state="readonly", width=13)
+        month_combo.pack(side=tk.LEFT, padx=(8, 4))
+        year_spin = tk.Spinbox(header, from_=1900, to=2100, width=6, textvariable=year_var, command=lambda: on_month_year_change())
+        year_spin.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(header, text=">", width=3, command=lambda: move_month(1)).pack(side=tk.LEFT)
+        days_frame = ttk.Frame(content)
+        days_frame.grid(row=1, column=0, columnspan=7, pady=(8, 0))
+        month_combo.bind("<<ComboboxSelected>>", lambda _event: on_month_year_change())
+        year_spin.bind("<Return>", lambda _event: on_month_year_change())
+        year_spin.bind("<FocusOut>", lambda _event: on_month_year_change())
+
+        def sync_controls() -> None:
+            month_var.set(month_names[state["month"] - 1])
+            year_var.set(str(state["year"]))
+
+        def on_month_year_change() -> None:
+            try:
+                state["month"] = month_names.index(month_var.get()) + 1
+                state["year"] = int(year_var.get())
+            except (ValueError, TypeError):
+                state["year"] = current.year
+                state["month"] = current.month
+            state["year"] = min(max(state["year"], 1900), 2100)
+            render_days()
+
+        def move_month(delta: int) -> None:
+            month = state["month"] + delta
+            year = state["year"]
+            if month < 1:
+                month = 12
+                year -= 1
+            elif month > 12:
+                month = 1
+                year += 1
+            state["year"] = year
+            state["month"] = month
+            render_days()
+
+        def select_day(day: int) -> None:
+            target_var.set(f"{state['year']:04d}-{state['month']:02d}-{day:02d}")
+            picker.destroy()
+
+        def render_days() -> None:
+            for child in days_frame.winfo_children():
+                child.destroy()
+            sync_controls()
+            for col, label in enumerate(["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]):
+                ttk.Label(days_frame, text=label, width=4, anchor=tk.CENTER).grid(row=0, column=col, padx=1, pady=1)
+            for row, week in enumerate(calendar.monthcalendar(state["year"], state["month"]), start=1):
+                for col, day in enumerate(week):
+                    if day == 0:
+                        ttk.Label(days_frame, text="", width=4).grid(row=row, column=col, padx=1, pady=1)
+                    else:
+                        ttk.Button(days_frame, text=str(day), width=4, command=lambda value=day: select_day(value)).grid(
+                            row=row,
+                            column=col,
+                            padx=1,
+                            pady=1,
+                        )
+
+        render_days()
+
+    def save_new_period(self, dialog: tk.Toplevel, fields: dict[str, tk.StringVar]) -> None:
+        data = {key: value.get().strip() for key, value in fields.items()}
+        error = self.validate_new_period(data)
+        if error:
+            messagebox.showerror("Crear nuevo periodo", error)
+            return
+        with db_session(self.db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO periodo
+                    (periodo_id, empresa_id, periodo, tipo_periodo, fecha_inicio, fecha_fin,
+                     descripcion, fuente, origen_periodo, batch_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    data["periodo_id"],
+                    self.default_company_id(conn),
+                    data["periodo"],
+                    data["tipo_periodo"],
+                    data["fecha_inicio"],
+                    data["fecha_fin"],
+                    data["descripcion"],
+                    "Registro manual del usuario",
+                    "MANUAL",
+                ),
+            )
+        dialog.destroy()
+        self.load_period_options()
+        created = next((item for item in self.period_options if item.get("periodo_id") == data["periodo_id"]), None)
+        if created:
+            self.period_var.set(created["display"])
+            self.select_active_period()
+        messagebox.showinfo("Crear nuevo periodo", "Periodo creado correctamente.")
+
+    def validate_new_period(self, data: dict[str, str]) -> str | None:
+        required = ["periodo_id", "periodo", "tipo_periodo", "fecha_inicio", "fecha_fin"]
+        missing = [field for field in required if not data.get(field)]
+        if missing:
+            return "Complete los campos obligatorios: " + ", ".join(missing) + "."
+        with db_session(self.db_path) as conn:
+            duplicate = conn.execute(
+                "SELECT 1 FROM periodo WHERE periodo_id = ?",
+                (data["periodo_id"],),
+            ).fetchone()
+        if duplicate:
+            return f"El codigo de periodo {data['periodo_id']} ya existe."
+        try:
+            start = datetime.strptime(data["fecha_inicio"], "%Y-%m-%d").date()
+            end = datetime.strptime(data["fecha_fin"], "%Y-%m-%d").date()
+        except ValueError:
+            return "Las fechas deben tener el formato YYYY-MM-DD."
+        if start > end:
+            return "La fecha de inicio no puede ser mayor que la fecha de fin."
+        duration = (end - start).days + 1
+        if not self.is_reasonable_period_duration(data["tipo_periodo"], duration):
+            return (
+                f"La duracion de {duration} dias no es razonable para un periodo "
+                f"{data['tipo_periodo']}."
+            )
+        return None
+
+    def is_reasonable_period_duration(self, period_type: str, duration_days: int) -> bool:
+        ranges = {
+            "mensual": (28, 31),
+            "bimestral": (58, 62),
+            "trimestral": (89, 92),
+            "cuatrimestral": (119, 123),
+            "semestral": (181, 184),
+            "anual": (365, 366),
+        }
+        minimum, maximum = ranges.get(period_type, (0, 0))
+        return minimum <= duration_days <= maximum
+
+    def default_company_id(self, conn) -> str | None:
+        row = conn.execute("SELECT empresa_id FROM empresas ORDER BY empresa_id LIMIT 1").fetchone()
+        return row["empresa_id"] if row else None
 
     def selected_model(self) -> CostingModelStatus:
         if not self.model_statuses:
-            raise RuntimeError("Primero valide e importe un Excel maestro para evaluar modelos.")
+            raise RuntimeError("Primero seleccione un periodo activo para evaluar modelos.")
         selected = self.model_var.get().split("|", 1)[0].strip()
         for item in self.model_statuses:
             if item.code == selected:
@@ -466,7 +928,7 @@ class CostosABCApp(tk.Tk):
         else:
             self.model_reason.insert(
                 "1.0",
-                "Los modelos se mostraran despues de validar e importar el Excel maestro.",
+                "Los modelos se mostraran despues de importar el Excel maestro y seleccionar un periodo activo.",
             )
         self.model_reason.configure(state=tk.DISABLED)
         self.update_model_diagram(item.code if item else None)
@@ -482,6 +944,7 @@ class CostosABCApp(tk.Tk):
             self.criteria_image_model_code = None
             self.criteria_source_image = None
             self.criteria_image = None
+            self.criteria_image_path = None
             self.criteria_canvas.delete("all")
             return
         path = IMAGES_MODELS_DIR / image_name
@@ -489,9 +952,11 @@ class CostosABCApp(tk.Tk):
             self.criteria_image_model_code = None
             self.criteria_source_image = None
             self.criteria_image = None
+            self.criteria_image_path = None
             self.criteria_canvas.delete("all")
             return
         self.criteria_image_model_code = model_code
+        self.criteria_image_path = path
         self.criteria_source_image = tk.PhotoImage(file=str(path))
         self.render_model_diagram()
 
@@ -505,14 +970,33 @@ class CostosABCApp(tk.Tk):
         canvas_height = max(self.criteria_canvas.winfo_height(), 1)
         image_width = self.criteria_source_image.width()
         image_height = self.criteria_source_image.height()
+        target_width = max(canvas_width - 10, 1)
+        target_height = max(canvas_height - 10, 1)
+        if self.criteria_image_path is not None:
+            try:
+                from PIL import Image, ImageTk
+
+                with Image.open(self.criteria_image_path) as source:
+                    scale = min(target_width / source.width, target_height / source.height, 1.08)
+                    display_width = max(1, int(source.width * scale))
+                    display_height = max(1, int(source.height * scale))
+                    resized = source.resize((display_width, display_height), Image.LANCZOS)
+                self.criteria_image = ImageTk.PhotoImage(resized)
+                x = max((canvas_width - display_width) // 2, 5)
+                y = max((canvas_height - display_height) // 2, 5)
+                self.criteria_canvas.create_image(x, y, anchor=tk.NW, image=self.criteria_image)
+                self.criteria_canvas.configure(scrollregion=(0, 0, canvas_width, canvas_height))
+                return
+            except Exception:
+                pass
         factor = max(
             1,
-            (image_width + max(canvas_width - 24, 1) - 1) // max(canvas_width - 24, 1),
-            (image_height + max(canvas_height - 24, 1) - 1) // max(canvas_height - 24, 1),
+            (image_width + target_width - 1) // target_width,
+            (image_height + target_height - 1) // target_height,
         )
         self.criteria_image = self.criteria_source_image.subsample(factor, factor)
-        x = max((canvas_width - self.criteria_image.width()) // 2, 12)
-        y = max((canvas_height - self.criteria_image.height()) // 2, 12)
+        x = max((canvas_width - self.criteria_image.width()) // 2, 5)
+        y = max((canvas_height - self.criteria_image.height()) // 2, 5)
         self.criteria_canvas.create_image(x, y, anchor=tk.NW, image=self.criteria_image)
         self.criteria_canvas.configure(scrollregion=(0, 0, canvas_width, canvas_height))
 
@@ -525,6 +1009,10 @@ class CostosABCApp(tk.Tk):
             messagebox.showwarning("Calculo ABC", "Primero importe el Excel maestro validado a SQLite.")
             self.status_text.set("No se puede ejecutar: falta importacion del Excel actual.")
             return
+        if self.active_period is None:
+            messagebox.showwarning("Calculo ABC", "Primero seleccione o cree un periodo activo.")
+            self.status_text.set("No se puede ejecutar: falta seleccionar el periodo activo.")
+            return
         item = self.selected_model()
         if not item.available:
             messagebox.showwarning(item.label, item.reason)
@@ -535,7 +1023,14 @@ class CostosABCApp(tk.Tk):
             self.refresh_all_views()
             self.show_modules_screen()
             messagebox.showinfo("Calculo ABC", f"Calculo completado. Ejecucion: {run_id}")
-            self.status_text.set(f"Calculo Modelo ABC por Ordenes de Trabajo completado. Run {run_id}.")
+            projection_note = (
+                " Periodo manual: resultados tratados como referencia estimada/proyectada."
+                if self.active_period.get("origen_periodo") == "MANUAL"
+                else ""
+            )
+            self.status_text.set(
+                f"Calculo Modelo ABC por Ordenes de Trabajo completado. Run {run_id}.{projection_note}"
+            )
         except Exception as exc:
             messagebox.showerror("Calculo ABC", str(exc))
             self.status_text.set(f"Error de calculo: {exc}")
@@ -559,13 +1054,27 @@ class CostosABCApp(tk.Tk):
     def selected_imported_table_name(self) -> str:
         if self.table_var.get() == "Costo_Indirectos":
             return self.indirect_cost_table_var.get()
+        if self.table_var.get() == "Periodo":
+            return "periodo"
         return self.table_var.get()
 
     def load_selected_imported_table(self) -> None:
         table = self.selected_imported_table_name()
         try:
             with db_session(self.db_path) as conn:
-                rows = [dict(row) for row in conn.execute(f"SELECT * FROM {quote_identifier(table)} LIMIT 500").fetchall()]
+                if table == "periodo":
+                    if self.active_period is None:
+                        rows = []
+                    else:
+                        rows = [
+                            dict(row)
+                            for row in conn.execute(
+                                f"SELECT * FROM {quote_identifier(table)} WHERE periodo_id = ? LIMIT 500",
+                                (self.active_period.get("periodo_id"),),
+                            ).fetchall()
+                        ]
+                else:
+                    rows = [dict(row) for row in conn.execute(f"SELECT * FROM {quote_identifier(table)} LIMIT 500").fetchall()]
             self.populate_tree("datos", rows)
         except Exception as exc:
             self.status_text.set(f"No se pudo cargar {table}: {exc}")
@@ -625,6 +1134,18 @@ class CostosABCApp(tk.Tk):
         self.show_selected_model_reason()
         self.update_model_diagram()
 
+    def hide_model_selection(self) -> None:
+        if hasattr(self, "model_box"):
+            self.model_box.pack_forget()
+        if hasattr(self, "criteria_box"):
+            self.criteria_box.pack_forget()
+
+    def show_model_selection(self) -> None:
+        if hasattr(self, "model_box") and not self.model_box.winfo_ismapped():
+            self.model_box.pack(fill=tk.X, pady=12, after=self.period_box)
+        if hasattr(self, "criteria_box") and not self.criteria_box.winfo_ismapped():
+            self.criteria_box.pack(fill=tk.BOTH, expand=True, pady=12, after=self.model_box)
+
     def hide_module_tabs(self) -> None:
         for tab, _title in self.module_tabs:
             self.notebook.hide(tab)
@@ -632,12 +1153,16 @@ class CostosABCApp(tk.Tk):
     def show_modules_screen(self) -> None:
         for tab, title in self.module_tabs:
             self.notebook.add(tab, text=title)
+        if hasattr(self, "back_home_button"):
+            self.back_home_button.grid()
         self.notebook.hide(self.home_tab)
         if self.module_tabs:
             self.notebook.select(self.module_tabs[0][0])
 
     def show_home_screen(self) -> None:
         self.notebook.add(self.home_tab, text="Pantalla inicial")
+        if hasattr(self, "back_home_button"):
+            self.back_home_button.grid_remove()
         self.hide_module_tabs()
         self.notebook.select(self.home_tab)
 
@@ -1067,7 +1592,7 @@ class CostosABCApp(tk.Tk):
         return str(value)
 
     def refresh_dashboard_text(self) -> None:
-        payload = dashboard_payload(self.db_path)
+        payload = self.active_dashboard_payload()
         self.clear_dashboard_chart()
         if not payload:
             self.set_dashboard_kpis({})
@@ -1077,13 +1602,21 @@ class CostosABCApp(tk.Tk):
             self.update_dashboard_period_label([])
             if self.dashboard_message is not None:
                 self.dashboard_message.configure(text="Ejecute el calculo del Modelo ABC por Ordenes de Trabajo para ver el dashboard.")
+            self.refresh_dashboard_scrollregion()
             return
         costs = payload.get("costos_ot", [])
         if self.dashboard_header_status is not None:
-            self.dashboard_header_status.configure(text=f"Actualizado | {len(costs)} OT", bg="#0F766E")
+            status = "Proyectado" if payload.get("modo_periodo") == "PROYECTADO" else "Actualizado"
+            self.dashboard_header_status.configure(text=f"{status} | {len(costs)} OT", bg="#0F766E")
         self.update_dashboard_period_label(payload.get("periodo", []))
         if self.dashboard_message is not None:
-            self.dashboard_message.configure(text="Resumen ejecutivo de costos, actividades, estructura y rentabilidad")
+            message = "Resumen ejecutivo de costos, actividades, estructura y rentabilidad"
+            if payload.get("modo_periodo") == "PROYECTADO":
+                message = (
+                    "Vista estimada/proyectada desde la estructura base del Excel maestro. "
+                    "Los calculos originales no se modifican."
+                )
+            self.dashboard_message.configure(text=message)
         self.set_dashboard_kpis(payload)
         self.update_dashboard_insights(payload)
         if self.dashboard_chart_frame is None:
@@ -1091,7 +1624,94 @@ class CostosABCApp(tk.Tk):
         figure = self.build_dashboard_figure(payload)
         self.dashboard_chart_canvas = FigureCanvasTkAgg(figure, master=self.dashboard_chart_frame)
         self.dashboard_chart_canvas.draw()
-        self.dashboard_chart_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        chart_widget = self.dashboard_chart_canvas.get_tk_widget()
+        chart_widget.pack(fill=tk.BOTH, expand=True)
+        self.bind_dashboard_scroll(chart_widget)
+        self.update_idletasks()
+        self.refresh_dashboard_scrollregion()
+
+    def active_dashboard_payload(self) -> dict:
+        return self.dashboard_payload_for_active_period(dashboard_payload(self.db_path))
+
+    def dashboard_payload_for_active_period(self, payload: dict) -> dict:
+        if not payload:
+            return payload
+        if not self.active_period or self.active_period.get("origen_periodo") != "MANUAL":
+            return payload
+        factor = self.active_period_projection_factor()
+        projected = {
+            key: [dict(row) for row in rows] if isinstance(rows, list) else rows
+            for key, rows in payload.items()
+        }
+        projected["periodo"] = [dict(self.active_period)]
+        projected["modo_periodo"] = "PROYECTADO"
+        projected["factor_proyeccion"] = factor
+        for row in projected.get("costos_ot", []):
+            self.scale_fields(
+                row,
+                [
+                    "cantidad_producida",
+                    "cmd_ot",
+                    "mod_ot",
+                    "otros_recursos_ot",
+                    "costo_produccion_ot",
+                    "costo_soporte_ot",
+                    "csd_ot",
+                    "costo_total_ot",
+                ],
+                factor,
+            )
+        for row in projected.get("costos_actividad", []):
+            self.scale_fields(
+                row,
+                ["costo_mod_ac", "costo_otros_recursos_ac", "costo_conversion_ac", "costo_soporte_ac", "costo_total_ac"],
+                factor,
+            )
+        for row in projected.get("estado_resultados", []):
+            self.scale_fields(
+                row,
+                [
+                    "ventas_netas_soles",
+                    "materia_prima_directa",
+                    "costos_conversion",
+                    "margen_bruto",
+                    "procesos_soporte",
+                    "margen_operativo",
+                ],
+                factor,
+            )
+        for row in projected.get("alertas", []):
+            self.scale_fields(row, ["valor_referencia"], factor)
+            observation = row.get("observacion") or ""
+            projection_note = f"Periodo manual proyectado con factor {factor:g}; calculos originales sin modificar."
+            row["observacion"] = f"{observation} {projection_note}".strip()
+        return projected
+
+    def active_period_projection_factor(self) -> float:
+        if not self.active_period:
+            return 1.0
+        type_factor = {
+            "mensual": 1.0,
+            "bimestral": 2.0,
+            "trimestral": 3.0,
+            "cuatrimestral": 4.0,
+            "semestral": 6.0,
+            "anual": 12.0,
+        }.get(str(self.active_period.get("tipo_periodo") or "").lower())
+        if type_factor is not None:
+            return type_factor
+        try:
+            start = datetime.strptime(str(self.active_period.get("fecha_inicio")), "%Y-%m-%d").date()
+            end = datetime.strptime(str(self.active_period.get("fecha_fin")), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return 1.0
+        duration = max((end - start).days + 1, 1)
+        return duration / 31
+
+    def scale_fields(self, row: dict, fields: list[str], factor: float) -> None:
+        for field in fields:
+            if field in row and row[field] is not None:
+                row[field] = self.as_number(row, field) * factor
 
     def clear_dashboard_chart(self) -> None:
         if self.dashboard_chart_canvas is not None:
@@ -1149,10 +1769,13 @@ class CostosABCApp(tk.Tk):
     def update_dashboard_insights(self, payload: dict) -> None:
         if self.dashboard_insights_text is None:
             return
+        lines = self.build_dashboard_insights_lines(payload)
         self.dashboard_insights_text.configure(state=tk.NORMAL)
         self.dashboard_insights_text.delete("1.0", tk.END)
-        self.dashboard_insights_text.insert("1.0", "\n".join(self.build_dashboard_insights_lines(payload)))
+        self.dashboard_insights_text.insert("1.0", "\n".join(lines))
+        self.dashboard_insights_text.configure(height=min(max(len(lines), 6), 14))
         self.dashboard_insights_text.configure(state=tk.DISABLED)
+        self.refresh_dashboard_scrollregion()
 
     def build_dashboard_insights_lines(self, payload: dict) -> list[str]:
         if not payload:
@@ -1162,6 +1785,11 @@ class CostosABCApp(tk.Tk):
         estado = payload.get("estado_resultados", [])
         alerts = payload.get("alertas", [])
         lines = ["ALERTAS"]
+        if payload.get("modo_periodo") == "PROYECTADO":
+            factor = payload.get("factor_proyeccion", 1)
+            lines.append(
+                f"- Vista estimada/proyectada para periodo manual. Factor aplicado: {factor:g}. Los calculos originales no se modifican."
+            )
         if alerts:
             for alert in alerts:
                 value = self.as_number(alert, "valor_referencia")
@@ -1232,7 +1860,7 @@ class CostosABCApp(tk.Tk):
     def generate_improvement_proposal(self) -> None:
         if self.proposal_text is None:
             return
-        payload = dashboard_payload(self.db_path)
+        payload = self.active_dashboard_payload()
         text = self.build_improvement_proposal_text(payload)
         self.proposal_text.delete("1.0", tk.END)
         self.proposal_text.insert("1.0", text)
@@ -1288,12 +1916,21 @@ class CostosABCApp(tk.Tk):
             "1. Alcance ejecutivo",
             "Este informe editable presenta acciones de mejora orientadas a elevar la rentabilidad de la empresa evaluada, usando como base los resultados del sistema ABC por ordenes de trabajo.",
             f"Periodo evaluado: {period_text}",
-            "",
-            "2. Diagnostico de costos y rentabilidad",
-            f"Costo total acumulado de OT: S/ {total_cost:,.2f}",
-            f"Ventas netas registradas: S/ {total_sales:,.2f}",
-            f"Rentabilidad operativa promedio: {avg_margin * 100:,.2f}%",
         ]
+        if payload.get("modo_periodo") == "PROYECTADO":
+            lines.append(
+                f"Nota de periodo nuevo: informacion estimada/proyectada con factor {payload.get('factor_proyeccion', 1):g}, "
+                "tomando como referencia la estructura del Excel maestro importado sin alterar los calculos originales."
+            )
+        lines.extend(
+            [
+                "",
+                "2. Diagnostico de costos y rentabilidad",
+                f"Costo total acumulado de OT: S/ {total_cost:,.2f}",
+                f"Ventas netas registradas: S/ {total_sales:,.2f}",
+                f"Rentabilidad operativa promedio: {avg_margin * 100:,.2f}%",
+            ]
+        )
         if highest_cost:
             lines.append(
                 f"OT/producto con mayor costo total: {highest_cost.get('codigo_producto') or highest_cost.get('codigo_ot') or highest_cost.get('ot_id')} "
@@ -1345,17 +1982,19 @@ class CostosABCApp(tk.Tk):
         costs = payload.get("costos_ot", [])
         activities = payload.get("costos_actividad", [])
         estado = payload.get("estado_resultados", [])
-        figure = Figure(figsize=(11.2, 4.8), dpi=100, facecolor="#FFFFFF", constrained_layout=True)
-        axes = figure.subplots(2, 2)
+        figure = Figure(figsize=(13.4, 6.7), dpi=100, facecolor="#FFFFFF", constrained_layout=True)
+        figure.set_constrained_layout_pads(w_pad=0.08, h_pad=0.14, wspace=0.08, hspace=0.12)
+        axes = figure.subplots(2, 2, gridspec_kw={"height_ratios": [1, 1.08]})
         ax_cost, ax_mix, ax_activity, ax_margin = axes.flatten()
 
         self.style_dashboard_axis(ax_cost, "Costo total por OT")
-        labels = [str(row.get("codigo_producto") or row.get("codigo_ot") or row.get("ot_id")) for row in costs]
+        labels = [self.dashboard_label(row.get("codigo_producto") or row.get("codigo_ot") or row.get("ot_id")) for row in costs]
         total_costs = [self.as_number(row, "costo_total_ot") for row in costs]
         if total_costs:
             bars = ax_cost.bar(labels, total_costs, color="#1D4ED8", width=0.62)
+            self.pad_axis_ylim(ax_cost, total_costs)
             self.annotate_bars(ax_cost, bars, currency=True)
-            ax_cost.tick_params(axis="x", rotation=20)
+            ax_cost.tick_params(axis="x", rotation=0)
             ax_cost.set_ylabel("Soles")
         else:
             self.empty_axis(ax_cost)
@@ -1373,16 +2012,17 @@ class CostosABCApp(tk.Tk):
             for name, values, color in components:
                 ax_mix.bar(x_positions, values, bottom=bottoms, label=name, color=color)
                 bottoms = [base + value for base, value in zip(bottoms, values)]
-            ax_mix.set_xticks(list(x_positions), labels, rotation=20)
+            self.pad_axis_ylim(ax_mix, bottoms)
+            ax_mix.set_xticks(list(x_positions), labels, rotation=0)
             ax_mix.set_ylabel("Soles")
-            ax_mix.legend(loc="upper left", fontsize=8, ncols=2)
+            ax_mix.legend(loc="upper left", fontsize=8, ncols=4, frameon=False)
         else:
             self.empty_axis(ax_mix)
 
         self.style_dashboard_axis(ax_activity, "Ranking de actividades")
         top_activities = sorted(activities, key=lambda row: self.as_number(row, "costo_total_ac"), reverse=True)[:7]
         if top_activities:
-            names = [str(row.get("nombre_actividad") or row.get("codigo_actividad")) for row in top_activities]
+            names = [self.dashboard_label(row.get("nombre_actividad") or row.get("codigo_actividad"), max_chars=28) for row in top_activities]
             values = [self.as_number(row, "costo_total_ac") for row in top_activities]
             bars = ax_activity.barh(names, values, color="#059669")
             ax_activity.invert_yaxis()
@@ -1392,21 +2032,22 @@ class CostosABCApp(tk.Tk):
             self.empty_axis(ax_activity)
 
         self.style_dashboard_axis(ax_margin, "Rentabilidad operativa por OT")
-        margin_labels = [str(row.get("codigo_producto") or row.get("ot_id")) for row in estado]
+        margin_labels = [self.dashboard_label(row.get("codigo_producto") or row.get("ot_id")) for row in estado]
         margins = [self.as_number(row, "rentabilidad_operativa") * 100 for row in estado]
         if margins:
             colors = ["#DC2626" if value < 0 else "#0891B2" for value in margins]
             bars = ax_margin.bar(margin_labels, margins, color=colors)
+            self.pad_axis_ylim(ax_margin, margins, include_zero=True)
             self.annotate_bars(ax_margin, bars, suffix="%")
             ax_margin.axhline(0, color="#334155", linewidth=0.8)
-            ax_margin.tick_params(axis="x", rotation=20)
+            ax_margin.tick_params(axis="x", rotation=0)
             ax_margin.set_ylabel("%")
         else:
             self.empty_axis(ax_margin)
         return figure
 
     def style_dashboard_axis(self, axis, title: str) -> None:
-        axis.set_title(title, fontsize=10.5, fontweight="bold", color="#0F172A", loc="left")
+        axis.set_title(title, fontsize=11, fontweight="bold", color="#0F172A", loc="left", pad=8)
         axis.set_facecolor("#FFFFFF")
         axis.grid(axis="y", color="#E2E8F0", linewidth=0.8)
         axis.set_axisbelow(True)
@@ -1422,6 +2063,27 @@ class CostosABCApp(tk.Tk):
         axis.text(0.5, 0.5, "Sin datos", ha="center", va="center", color="#64748B", transform=axis.transAxes)
         axis.set_xticks([])
         axis.set_yticks([])
+
+    def dashboard_label(self, value, max_chars: int = 20) -> str:
+        text = str(value or "")
+        if len(text) <= max_chars:
+            return text
+        midpoint = max_chars // 2
+        return text[:midpoint].rstrip() + "\n" + text[midpoint:max_chars].rstrip() + "..."
+
+    def pad_axis_ylim(self, axis, values: list[float], include_zero: bool = True) -> None:
+        if not values:
+            return
+        minimum = min(values)
+        maximum = max(values)
+        if include_zero:
+            minimum = min(minimum, 0)
+            maximum = max(maximum, 0)
+        if minimum == maximum:
+            padding = abs(maximum) * 0.2 or 1
+        else:
+            padding = (maximum - minimum) * 0.18
+        axis.set_ylim(minimum - padding, maximum + padding)
 
     def annotate_bars(self, axis, bars, currency: bool = False, suffix: str = "") -> None:
         for bar in bars:
@@ -1460,7 +2122,8 @@ class CostosABCApp(tk.Tk):
 
     def generate_reports(self) -> None:
         try:
-            paths = generate_all_reports(self.db_path, REPORTS_DIR)
+            payload = self.active_dashboard_payload()
+            paths = generate_all_reports(self.db_path, REPORTS_DIR, payload or None)
             self.refresh_outputs()
             messagebox.showinfo("Reportes", "Reportes generados:\n" + "\n".join(str(path) for path in paths))
         except Exception as exc:
@@ -1468,14 +2131,15 @@ class CostosABCApp(tk.Tk):
 
     def generate_documents(self) -> None:
         try:
-            paths = generate_all_documents(self.db_path, REPORTS_DIR)
+            payload = self.active_dashboard_payload()
+            paths = generate_all_documents(self.db_path, REPORTS_DIR, dashboard_payload_override=payload or None)
             self.refresh_outputs()
             messagebox.showinfo("Documentos", "Documentos generados:\n" + "\n".join(str(path) for path in paths))
         except Exception as exc:
             messagebox.showerror("Documentos", str(exc))
 
     def generate_dashboard_png(self) -> None:
-        path = generate_dashboard_image(self.db_path, REPORTS_DIR)
+        path = generate_dashboard_image(self.db_path, REPORTS_DIR, self.active_dashboard_payload() or None)
         self.refresh_outputs()
         if path:
             messagebox.showinfo("Dashboard", f"Dashboard PNG generado: {path}")

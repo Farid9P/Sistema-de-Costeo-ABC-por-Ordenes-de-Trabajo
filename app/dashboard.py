@@ -51,7 +51,11 @@ def _safe_number(row: dict, field: str) -> float:
         return 0.0
 
 
-def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPORTS_DIR) -> Path | None:
+def generate_dashboard_image(
+    db_path: str | Path,
+    output_dir: str | Path = EXPORTS_DIR,
+    payload_override: dict | None = None,
+) -> Path | None:
     try:
         import matplotlib
 
@@ -60,7 +64,7 @@ def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPOR
     except Exception:
         return None
 
-    payload = dashboard_payload(db_path)
+    payload = payload_override if payload_override is not None else dashboard_payload(db_path)
     costs = payload.get("costos_ot", [])
     activities = payload.get("costos_actividad", [])
     results = payload.get("estado_resultados", [])
@@ -75,6 +79,8 @@ def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPOR
     title = "Dashboard de Costos ABC Frenosa"
     if period_text:
         title = f"{title}\n{period_text}"
+    if payload.get("modo_periodo") == "PROYECTADO":
+        title = f"{title}\nVista estimada/proyectada | Factor {payload.get('factor_proyeccion', 1):g}"
     fig.suptitle(title, fontsize=15, fontweight="bold")
     ax_cost, ax_mix, ax_activity, ax_margin = axes.flatten()
     if costs:

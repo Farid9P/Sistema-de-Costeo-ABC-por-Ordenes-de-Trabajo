@@ -105,9 +105,15 @@ def _fmt_pct(value: float) -> str:
     return f"{value * 100:,.2f}%"
 
 
-def _add_dashboard_picture(doc: Document, db_path: str | Path, output_dir: str | Path, title: str = "Dashboard visual") -> None:
+def _add_dashboard_picture(
+    doc: Document,
+    db_path: str | Path,
+    output_dir: str | Path,
+    title: str = "Dashboard visual",
+    payload_override: dict | None = None,
+) -> None:
     doc.add_heading(title, level=2)
-    path = generate_dashboard_image(db_path, output_dir)
+    path = generate_dashboard_image(db_path, output_dir, payload_override)
     if path and path.exists():
         doc.add_picture(str(path), width=Inches(6.4))
         last = doc.paragraphs[-1]
@@ -218,18 +224,32 @@ def generate_informe_pruebas(db_path: str | Path, test_results: list[dict] | Non
     return _save(doc, Path(output_dir), "Informe_pruebas.docx")
 
 
-def generate_informe_mejoras(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> Path:
+def generate_informe_mejoras(
+    db_path: str | Path,
+    output_dir: str | Path = REPORTS_DIR,
+    payload_override: dict | None = None,
+) -> Path:
     doc = _setup_document("Informe de propuestas de mejora", "Impacto positivo en la rentabilidad")
-    with db_session(db_path) as conn:
-        run_id = latest_run_id(conn)
-        activities = _rows(conn, "actividad_total", run_id)
-        results = _rows(conn, "estado_resultados_ot", run_id)
-        costs = _rows(conn, "hoja_costos_ot", run_id)
+    if payload_override is not None:
+        activities = payload_override.get("costos_actividad", [])
+        results = payload_override.get("estado_resultados", [])
+        costs = payload_override.get("costos_ot", [])
+    else:
+        with db_session(db_path) as conn:
+            run_id = latest_run_id(conn)
+            activities = _rows(conn, "actividad_total", run_id)
+            results = _rows(conn, "estado_resultados_ot", run_id)
+            costs = _rows(conn, "hoja_costos_ot", run_id)
     top_activity = max(activities, key=lambda r: r.get("costo_total_ac") or 0, default=None)
     low_margin = min(results, key=lambda r: r.get("rentabilidad_operativa") or 0, default=None)
     doc.add_heading("Resumen ejecutivo", level=1)
+    if payload_override and payload_override.get("modo_periodo") == "PROYECTADO":
+        doc.add_paragraph(
+            f"Vista estimada/proyectada para periodo manual con factor {payload_override.get('factor_proyeccion', 1):g}. "
+            "Se usa como referencia la estructura del Excel maestro importado sin alterar los calculos originales."
+        )
     _add_executive_metrics(doc, costs, results, activities)
-    _add_dashboard_picture(doc, db_path, output_dir)
+    _add_dashboard_picture(doc, db_path, output_dir, payload_override=payload_override)
     doc.add_heading("Hallazgos ABC", level=1)
     if top_activity:
         doc.add_paragraph(
@@ -332,12 +352,13 @@ def generate_all_documents(
     db_path: str | Path,
     output_dir: str | Path = REPORTS_DIR,
     test_results: list[dict] | None = None,
+    dashboard_payload_override: dict | None = None,
 ) -> list[Path]:
     return [
         generate_manual_descriptivo(db_path, output_dir),
         generate_manual_usuario(db_path, output_dir),
         generate_informe_pruebas(db_path, test_results, output_dir),
-        generate_informe_mejoras(db_path, output_dir),
+        generate_informe_mejoras(db_path, output_dir, dashboard_payload_override),
         generate_analisis_funcional(db_path, output_dir),
         generate_codigo_principal(db_path, output_dir),
     ]

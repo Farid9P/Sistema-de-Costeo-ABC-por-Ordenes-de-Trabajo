@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .constants import OPTIONAL_SHEET_SPECS, REQUIRED_FILES, SHEET_SPECS, SHEET_TO_TABLE
 from .database import (
@@ -100,7 +101,29 @@ def validate_workbook(excel_path: str | Path) -> ImportResult:
     if path.suffix.lower() != ".xlsx":
         return ImportResult(False, issues=[ImportIssue("ERROR", "El importador acepta archivos .xlsx.")])
 
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except PermissionError:
+        return ImportResult(
+            False,
+            issues=[
+                ImportIssue(
+                    "ERROR",
+                    "No se puede abrir el Excel maestro porque esta bloqueado o sin permiso de lectura. "
+                    "Cierre el archivo en Excel, cierre la vista previa de OneDrive/Explorador y vuelva a validar.",
+                )
+            ],
+        )
+    except (InvalidFileException, OSError) as exc:
+        return ImportResult(
+            False,
+            issues=[
+                ImportIssue(
+                    "ERROR",
+                    f"No se pudo leer el Excel maestro. Verifique que sea un archivo .xlsx valido y no este danado. Detalle: {exc}",
+                )
+            ],
+        )
     sheet_names = set(wb.sheetnames)
 
     for sheet, headers in SHEET_SPECS.items():
@@ -195,7 +218,19 @@ def import_excel_to_sqlite(excel_path: str | Path, db_path: str | Path) -> Impor
             return validation
 
         clear_imported_tables(conn)
-        wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+        try:
+            wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+        except PermissionError:
+            message = (
+                "No se puede abrir el Excel maestro porque esta bloqueado o sin permiso de lectura. "
+                "Cierre el archivo en Excel, cierre la vista previa de OneDrive/Explorador y vuelva a importar."
+            )
+            add_import_issue(conn, batch_id, "ERROR", message)
+            update_import_batch(conn, batch_id, "ERROR", "No se pudo abrir el Excel maestro.")
+            validation.ok = False
+            validation.batch_id = batch_id
+            validation.issues.append(ImportIssue("ERROR", message))
+            return validation
         imported_rows: dict[str, int] = {}
         for sheet, table in SHEET_TO_TABLE.items():
             if sheet not in wb.sheetnames:
@@ -317,4 +352,3 @@ def _validate_loaded_relations(conn, batch_id: int) -> None:
                     None,
                     pct_col,
                 )
-

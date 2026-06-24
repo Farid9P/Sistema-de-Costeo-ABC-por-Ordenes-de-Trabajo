@@ -377,13 +377,17 @@ def generate_proceso_2_report(db_path: str | Path, output_dir: str | Path = REPO
         return _save_workbook(wb, Path(output_dir) / "Reporte_Proceso_2_AC_OT.xlsx")
 
 
-def generate_cost_sheet_report(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> Path:
+def generate_cost_sheet_report(
+    db_path: str | Path,
+    output_dir: str | Path = REPORTS_DIR,
+    rows_override: list[dict] | None = None,
+) -> Path:
     with db_session(db_path) as conn:
         run_id = latest_run_id(conn)
         wb = Workbook()
         ws = wb.active
         ws.title = "Hoja_Costos_OT"
-        rows = _table(conn, "hoja_costos_ot", run_id)
+        rows = rows_override if rows_override is not None else _table(conn, "hoja_costos_ot", run_id)
         _write_rows(ws, rows, "Hoja de costos por OT")
         _add_bar_chart(ws, "codigo_producto", "costo_total_ot", "Costo total por OT", "V3")
         _add_stacked_bar_chart(
@@ -410,13 +414,17 @@ def generate_cost_sheet_report(db_path: str | Path, output_dir: str | Path = REP
         return _save_workbook(wb, Path(output_dir) / "Reporte_Hoja_Costos_OT.xlsx")
 
 
-def generate_estado_resultados_report(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> Path:
+def generate_estado_resultados_report(
+    db_path: str | Path,
+    output_dir: str | Path = REPORTS_DIR,
+    rows_override: list[dict] | None = None,
+) -> Path:
     with db_session(db_path) as conn:
         run_id = latest_run_id(conn)
         wb = Workbook()
         ws = wb.active
         ws.title = "Estado_Resultados"
-        rows = _table(conn, "estado_resultados_ot", run_id)
+        rows = rows_override if rows_override is not None else _table(conn, "estado_resultados_ot", run_id)
         _write_rows(ws, rows, "Estado de resultados por OT")
         _add_bar_chart(ws, "codigo_producto", "margen_operativo", "Margen operativo por OT", "P3")
         _add_bar_chart(ws, "codigo_producto", "rentabilidad_operativa", "Rentabilidad operativa por OT", "P20", y_axis="Ratio")
@@ -442,34 +450,45 @@ def generate_estado_resultados_report(db_path: str | Path, output_dir: str | Pat
         return _save_workbook(wb, Path(output_dir) / "Reporte_Estado_Resultados.xlsx")
 
 
-def generate_dashboard_report(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> Path:
-    with db_session(db_path) as conn:
-        run_id = latest_run_id(conn)
-        wb = Workbook()
-        wb.remove(wb.active)
-        dashboard_rows: dict[str, list[dict]] = {}
-        for sheet, table in [
-            ("Hoja_Costos", "hoja_costos_ot"),
-            ("Estado_Resultados", "estado_resultados_ot"),
-            ("Costos_Actividad", "actividad_total"),
-            ("Alertas", "dashboard_alertas"),
-        ]:
-            ws = wb.create_sheet(sheet)
-            rows = _table(conn, table, run_id)
-            dashboard_rows[sheet] = rows
-            _write_rows(ws, rows, f"Dashboard - {sheet}")
-        _add_dashboard_charts(wb)
-        _add_summary_sheet(
-            wb,
-            "Resumen ejecutivo - Dashboard",
-            [
-                ("Costo total OT", _sum(dashboard_rows.get("Hoja_Costos", []), "costo_total_ot")),
-                ("Ventas netas totales", _sum(dashboard_rows.get("Estado_Resultados", []), "ventas_netas_soles")),
-                ("Actividad de mayor costo", _max_label(dashboard_rows.get("Costos_Actividad", []), "costo_total_ac", "nombre_actividad")),
-                ("Menor rentabilidad", _min_label(dashboard_rows.get("Estado_Resultados", []), "rentabilidad_operativa", "codigo_producto")),
-            ],
-        )
-        return _save_workbook(wb, Path(output_dir) / "Reporte_Dashboard.xlsx")
+def generate_dashboard_report(
+    db_path: str | Path,
+    output_dir: str | Path = REPORTS_DIR,
+    payload_override: dict | None = None,
+) -> Path:
+    wb = Workbook()
+    wb.remove(wb.active)
+    dashboard_rows: dict[str, list[dict]] = {}
+    if payload_override is not None:
+        rows_by_sheet = [
+            ("Hoja_Costos", payload_override.get("costos_ot", [])),
+            ("Estado_Resultados", payload_override.get("estado_resultados", [])),
+            ("Costos_Actividad", payload_override.get("costos_actividad", [])),
+            ("Alertas", payload_override.get("alertas", [])),
+        ]
+    else:
+        with db_session(db_path) as conn:
+            run_id = latest_run_id(conn)
+            rows_by_sheet = [
+                ("Hoja_Costos", _table(conn, "hoja_costos_ot", run_id)),
+                ("Estado_Resultados", _table(conn, "estado_resultados_ot", run_id)),
+                ("Costos_Actividad", _table(conn, "actividad_total", run_id)),
+                ("Alertas", _table(conn, "dashboard_alertas", run_id)),
+            ]
+    for sheet, rows in rows_by_sheet:
+        ws = wb.create_sheet(sheet)
+        dashboard_rows[sheet] = rows
+        _write_rows(ws, rows, f"Dashboard - {sheet}")
+    _add_dashboard_charts(wb)
+    summary_items = [
+        ("Costo total OT", _sum(dashboard_rows.get("Hoja_Costos", []), "costo_total_ot")),
+        ("Ventas netas totales", _sum(dashboard_rows.get("Estado_Resultados", []), "ventas_netas_soles")),
+        ("Actividad de mayor costo", _max_label(dashboard_rows.get("Costos_Actividad", []), "costo_total_ac", "nombre_actividad")),
+        ("Menor rentabilidad", _min_label(dashboard_rows.get("Estado_Resultados", []), "rentabilidad_operativa", "codigo_producto")),
+    ]
+    if payload_override and payload_override.get("modo_periodo") == "PROYECTADO":
+        summary_items.append(("Vista de periodo", f"Proyectada con factor {payload_override.get('factor_proyeccion', 1):g}"))
+    _add_summary_sheet(wb, "Resumen ejecutivo - Dashboard", summary_items)
+    return _save_workbook(wb, Path(output_dir) / "Reporte_Dashboard.xlsx")
 
 
 def _add_dashboard_charts(wb: Workbook) -> None:
@@ -519,11 +538,23 @@ def _add_dashboard_charts(wb: Workbook) -> None:
         _add_bar_chart(ws, "codigo_producto", "rentabilidad_operativa", "Rentabilidad operativa por OT", "P3", y_axis="Ratio")
 
 
-def generate_all_reports(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> list[Path]:
+def generate_all_reports(
+    db_path: str | Path,
+    output_dir: str | Path = REPORTS_DIR,
+    dashboard_payload_override: dict | None = None,
+) -> list[Path]:
     return [
         generate_proceso_1_report(db_path, output_dir),
         generate_proceso_2_report(db_path, output_dir),
-        generate_cost_sheet_report(db_path, output_dir),
-        generate_estado_resultados_report(db_path, output_dir),
-        generate_dashboard_report(db_path, output_dir),
+        generate_cost_sheet_report(
+            db_path,
+            output_dir,
+            dashboard_payload_override.get("costos_ot") if dashboard_payload_override else None,
+        ),
+        generate_estado_resultados_report(
+            db_path,
+            output_dir,
+            dashboard_payload_override.get("estado_resultados") if dashboard_payload_override else None,
+        ),
+        generate_dashboard_report(db_path, output_dir, dashboard_payload_override),
     ]

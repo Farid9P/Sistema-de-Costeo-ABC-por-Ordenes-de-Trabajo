@@ -95,7 +95,11 @@ def migrate_legacy_imported_table_names(conn: sqlite3.Connection) -> None:
                 (new_name, old_name),
             )
         conn.execute(f"DROP TABLE {quote_identifier(old_name)}")
-    add_missing_columns(conn, "periodo", {"fecha_inicio": "TEXT", "fecha_fin": "TEXT"})
+    add_missing_columns(
+        conn,
+        "periodo",
+        {"fecha_inicio": "TEXT", "fecha_fin": "TEXT", "origen_periodo": "TEXT"},
+    )
 
 
 def add_missing_columns(conn: sqlite3.Connection, table_name: str, columns: dict[str, str]) -> None:
