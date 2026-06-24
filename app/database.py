@@ -11,6 +11,7 @@ from .constants import DEFAULT_DB_PATH, ROOT_DIR, SHEET_TO_TABLE
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 LEGACY_IMPORTED_TABLE_RENAMES = {
+    "periodos": "periodo",
     "pd_actividades": "Personal_directos",
     "costos_indirectos": "costo_otros_recursos(CI)",
     "soporte_mantenimiento": "Soporte_Mantenimiento(CI)",
@@ -94,6 +95,18 @@ def migrate_legacy_imported_table_names(conn: sqlite3.Connection) -> None:
                 (new_name, old_name),
             )
         conn.execute(f"DROP TABLE {quote_identifier(old_name)}")
+    add_missing_columns(conn, "periodo", {"fecha_inicio": "TEXT", "fecha_fin": "TEXT"})
+
+
+def add_missing_columns(conn: sqlite3.Connection, table_name: str, columns: dict[str, str]) -> None:
+    if not table_exists(conn, table_name):
+        return
+    existing = set(table_columns(conn, table_name))
+    for column, column_type in columns.items():
+        if column not in existing:
+            conn.execute(
+                f"ALTER TABLE {quote_identifier(table_name)} ADD COLUMN {quote_identifier(column)} {column_type}"
+            )
 
 
 def create_import_batch(conn: sqlite3.Connection, excel_path: str | Path, status: str = "INICIADO", notes: str = "") -> int:

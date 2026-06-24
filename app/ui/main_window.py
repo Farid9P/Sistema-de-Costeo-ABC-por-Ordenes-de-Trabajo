@@ -25,7 +25,7 @@ from ..reports import generate_all_reports
 
 IMPORTED_TABLES = [
     "empresas",
-    "periodos",
+    "periodo",
     "modelos_costeo",
     "objetos_costo",
     "ordenes_trabajo",
@@ -74,6 +74,7 @@ class CostosABCApp(tk.Tk):
         self.dashboard_chart_canvas = None
         self.dashboard_kpis: dict[str, tk.Label] = {}
         self.dashboard_header_status: tk.Label | None = None
+        self.dashboard_period_label: tk.Label | None = None
         self.dashboard_message: ttk.Label | None = None
         self.dashboard_chart_frame = None
         self.dashboard_insights_text: tk.Text | None = None
@@ -216,13 +217,14 @@ class CostosABCApp(tk.Tk):
             fg="#F8FAFC",
             font=("Segoe UI", 15, "bold"),
         ).grid(row=0, column=0, sticky="w")
-        tk.Label(
+        self.dashboard_period_label = tk.Label(
             header,
             text="Frenosa | Modelo ABC por Ordenes de Trabajo",
             bg="#0F172A",
             fg="#CBD5E1",
             font=("Segoe UI", 9),
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        )
+        self.dashboard_period_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
         self.dashboard_header_status = tk.Label(
             header,
             text="Pendiente de calculo",
@@ -1039,12 +1041,14 @@ class CostosABCApp(tk.Tk):
             self.update_dashboard_insights({})
             if self.dashboard_header_status is not None:
                 self.dashboard_header_status.configure(text="Pendiente de calculo", bg="#1E293B")
+            self.update_dashboard_period_label([])
             if self.dashboard_message is not None:
                 self.dashboard_message.configure(text="Ejecute el calculo del Modelo ABC por Ordenes de Trabajo para ver el dashboard.")
             return
         costs = payload.get("costos_ot", [])
         if self.dashboard_header_status is not None:
             self.dashboard_header_status.configure(text=f"Actualizado | {len(costs)} OT", bg="#0F766E")
+        self.update_dashboard_period_label(payload.get("periodo", []))
         if self.dashboard_message is not None:
             self.dashboard_message.configure(text="Resumen ejecutivo de costos, actividades, estructura y rentabilidad")
         self.set_dashboard_kpis(payload)
@@ -1060,6 +1064,32 @@ class CostosABCApp(tk.Tk):
         if self.dashboard_chart_canvas is not None:
             self.dashboard_chart_canvas.get_tk_widget().destroy()
             self.dashboard_chart_canvas = None
+
+    def update_dashboard_period_label(self, periods: list[dict]) -> None:
+        if self.dashboard_period_label is None:
+            return
+        base = "Frenosa | Modelo ABC por Ordenes de Trabajo"
+        period_text = self.format_dashboard_period(periods)
+        text = f"{base} | {period_text}" if period_text else f"{base} | Periodo pendiente"
+        self.dashboard_period_label.configure(text=text)
+
+    def format_dashboard_period(self, periods: list[dict]) -> str:
+        if not periods:
+            return ""
+        labels = []
+        for row in periods:
+            name = row.get("periodo") or row.get("periodo_id") or "Periodo"
+            period_type = row.get("tipo_periodo") or ""
+            start = row.get("fecha_inicio") or ""
+            end = row.get("fecha_fin") or ""
+            date_range = f"{start} a {end}" if start and end else start or end
+            pieces = [str(name)]
+            if period_type:
+                pieces.append(str(period_type))
+            if date_range:
+                pieces.append(str(date_range))
+            labels.append(" | ".join(pieces))
+        return "Periodo: " + "; ".join(labels)
 
     def set_dashboard_kpis(self, payload: dict) -> None:
         costs = payload.get("costos_ot", []) if payload else []

@@ -48,11 +48,13 @@ SHEET_SPECS: dict[str, list[str]] = {
         "fuente",
         "observacion",
     ],
-    "Periodos": [
+    "Periodo": [
         "periodo_id",
         "empresa_id",
         "periodo",
         "tipo_periodo",
+        "fecha_inicio",
+        "fecha_fin",
         "descripcion",
         "fuente",
     ],
@@ -288,7 +290,7 @@ OPTIONAL_SHEET_SPECS: dict[str, list[str]] = {
 
 SHEET_TO_TABLE = {
     "Empresa": "empresas",
-    "Periodos": "periodos",
+    "Periodo": "periodo",
     "Modelos_Costeo": "modelos_costeo",
     "Objetos_Costo": "objetos_costo",
     "Ordenes_Trabajo": "ordenes_trabajo",

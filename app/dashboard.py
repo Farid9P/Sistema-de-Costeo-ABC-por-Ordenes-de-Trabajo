@@ -6,7 +6,7 @@ from .constants import EXPORTS_DIR
 from .database import db_session, latest_run_id
 
 
-def dashboard_payload(db_path: str | Path) -> dict[str, list[dict]]:
+def dashboard_payload(db_path: str | Path) -> dict:
     with db_session(db_path) as conn:
         run_id = latest_run_id(conn)
         if run_id is None:
@@ -21,7 +21,27 @@ def dashboard_payload(db_path: str | Path) -> dict[str, list[dict]]:
         for key, table in tables.items():
             rows = conn.execute(f"SELECT * FROM {table} WHERE run_id = ?", (run_id,)).fetchall()
             payload[key] = [dict(row) for row in rows]
+        payload["periodo"] = _periodo_from_run(conn, run_id)
         return payload
+
+
+def _periodo_from_run(conn, run_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT
+            p.periodo_id,
+            p.periodo,
+            p.tipo_periodo,
+            p.fecha_inicio,
+            p.fecha_fin
+        FROM hoja_costos_ot h
+        LEFT JOIN periodo p ON p.periodo_id = h.periodo_id
+        WHERE h.run_id = ?
+        ORDER BY p.fecha_inicio, p.periodo_id
+        """,
+        (run_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _safe_number(row: dict, field: str) -> float:
@@ -45,13 +65,17 @@ def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPOR
     activities = payload.get("costos_actividad", [])
     results = payload.get("estado_resultados", [])
     alerts = payload.get("alertas", [])
+    period_text = _periodo_text(payload.get("periodo", []))
     if not costs and not activities and not results:
         return None
 
     output = Path(output_dir) / "Dashboard_Costos_Frenosa.png"
     output.parent.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 2, figsize=(14, 9))
-    fig.suptitle("Dashboard de Costos ABC Frenosa", fontsize=15, fontweight="bold")
+    title = "Dashboard de Costos ABC Frenosa"
+    if period_text:
+        title = f"{title}\n{period_text}"
+    fig.suptitle(title, fontsize=15, fontweight="bold")
     ax_cost, ax_mix, ax_activity, ax_margin = axes.flatten()
     if costs:
         labels = [row.get("codigo_producto") or row.get("codigo_ot") for row in costs]
@@ -121,3 +145,22 @@ def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPOR
     fig.savefig(output, dpi=160)
     plt.close(fig)
     return output
+
+
+def _periodo_text(periods: list[dict]) -> str:
+    if not periods:
+        return ""
+    labels = []
+    for row in periods:
+        name = row.get("periodo") or row.get("periodo_id") or "Periodo"
+        period_type = row.get("tipo_periodo") or ""
+        start = row.get("fecha_inicio") or ""
+        end = row.get("fecha_fin") or ""
+        date_range = f"{start} a {end}" if start and end else start or end
+        pieces = [str(name)]
+        if period_type:
+            pieces.append(str(period_type))
+        if date_range:
+            pieces.append(str(date_range))
+        labels.append(" | ".join(pieces))
+    return "Periodo: " + "; ".join(labels)

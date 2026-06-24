@@ -266,7 +266,7 @@ def generate_analisis_funcional(db_path: str | Path, output_dir: str | Path = RE
     for module in [
         "Pantalla inicial e importacion Excel.",
         "Modelos de costeo con disponibilidad validada.",
-        "Maestros: empresa, periodos, objetos, OT, recursos, actividades e inductores.",
+        "Maestros: empresa, periodo, objetos, OT, recursos, actividades e inductores.",
         "Proceso 1: EC -> AC.",
         "Proceso 2 AC-OT (Produccion).",
         "Proceso 2 AC-OT (Soporte).",

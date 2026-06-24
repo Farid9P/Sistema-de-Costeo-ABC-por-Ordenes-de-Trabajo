@@ -44,9 +44,10 @@ CREATE TABLE IF NOT EXISTS empresas (
     observacion TEXT, batch_id INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS periodos (
+CREATE TABLE IF NOT EXISTS periodo (
     periodo_id TEXT, empresa_id TEXT, periodo TEXT, tipo_periodo TEXT,
-    descripcion TEXT, fuente TEXT, batch_id INTEGER
+    fecha_inicio TEXT, fecha_fin TEXT, descripcion TEXT, fuente TEXT,
+    batch_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS modelos_costeo (
