@@ -35,7 +35,26 @@ def _write_rows(ws, rows: list[dict], title: str) -> None:
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     for row in rows:
         ws.append([row.get(header) for header in headers])
+    ws.freeze_panes = "A3"
+    ws.auto_filter.ref = ws.dimensions
+    _format_numeric_columns(ws)
     _autosize(ws)
+
+
+def _format_numeric_columns(ws) -> None:
+    percent_names = {"porcentaje", "peso", "rentabilidad", "margen"}
+    currency_names = {"costo", "cmd", "csd", "ventas", "importe", "salario", "total", "materia", "conversion", "soporte"}
+    headers = [cell.value for cell in ws[2]] if ws.max_row >= 2 else []
+    for col_idx, header in enumerate(headers, start=1):
+        header_text = str(header or "").lower()
+        if any(token in header_text for token in percent_names):
+            number_format = "0.00%"
+        elif any(token in header_text for token in currency_names):
+            number_format = '#,##0.00'
+        else:
+            continue
+        for row_idx in range(3, ws.max_row + 1):
+            ws.cell(row=row_idx, column=col_idx).number_format = number_format
 
 
 def _autosize(ws) -> None:
@@ -83,11 +102,144 @@ def _add_formula_sheet(wb: Workbook, formulas: list[tuple[str, str]]) -> None:
     _autosize(ws)
 
 
+def _add_summary_sheet(wb: Workbook, title: str, items: list[tuple[str, object]]) -> None:
+    ws = wb.create_sheet("Resumen", 0)
+    ws.append([title])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+    ws["A1"].fill = TITLE_FILL
+    ws["A1"].font = WHITE_FONT
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.append(["Indicador", "Valor", "Interpretacion", "Fuente"])
+    for cell in ws[2]:
+        cell.fill = HEADER_FILL
+        cell.font = BOLD_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for label, value in items:
+        ws.append([label, value, _summary_interpretation(label, value), "Calculos generados desde SQLite"])
+    ws.freeze_panes = "A3"
+    _format_numeric_columns(ws)
+    _autosize(ws)
+
+
+def _summary_interpretation(label: str, value: object) -> str:
+    label_lower = label.lower()
+    if "mayor costo" in label_lower:
+        return "Elemento prioritario para revision de eficiencia y uso de inductores."
+    if "menor rentabilidad" in label_lower:
+        return "Objeto de costo que requiere analisis comercial y operativo."
+    if "total" in label_lower:
+        return "Valor acumulado de la ejecucion del modelo ABC."
+    return "Indicador de control para lectura academica del reporte."
+
+
+def _safe_number(row: dict | None, field: str) -> float:
+    if not row:
+        return 0.0
+    try:
+        return float(row.get(field) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sum(rows: list[dict], field: str) -> float:
+    return sum(_safe_number(row, field) for row in rows)
+
+
+def _max_label(rows: list[dict], value_field: str, label_field: str) -> str:
+    if not rows:
+        return "Sin datos"
+    row = max(rows, key=lambda item: _safe_number(item, value_field))
+    return f"{row.get(label_field) or row.get('codigo_producto') or row.get('ot_id')} - { _safe_number(row, value_field):,.2f}"
+
+
+def _min_label(rows: list[dict], value_field: str, label_field: str) -> str:
+    if not rows:
+        return "Sin datos"
+    row = min(rows, key=lambda item: _safe_number(item, value_field))
+    value = _safe_number(row, value_field)
+    suffix = "%" if "rentabilidad" in value_field else ""
+    display_value = value * 100 if suffix else value
+    return f"{row.get(label_field) or row.get('codigo_producto') or row.get('ot_id')} - {display_value:,.2f}{suffix}"
+
+
+def _header_index(ws, header: str) -> int | None:
+    if ws.max_row < 2:
+        return None
+    headers = [cell.value for cell in ws[2]]
+    try:
+        return headers.index(header) + 1
+    except ValueError:
+        return None
+
+
+def _add_bar_chart(ws, label_header: str, value_header: str, title: str, position: str, y_axis: str = "Soles") -> None:
+    if ws.max_row < 3:
+        return
+    label_col = _header_index(ws, label_header)
+    value_col = _header_index(ws, value_header)
+    if not label_col or not value_col:
+        return
+    chart = BarChart()
+    chart.title = title
+    chart.y_axis.title = y_axis
+    chart.x_axis.title = label_header
+    chart.height = 7
+    chart.width = 14
+    data = Reference(ws, min_col=value_col, min_row=2, max_row=ws.max_row)
+    labels = Reference(ws, min_col=label_col, min_row=3, max_row=ws.max_row)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(labels)
+    ws.add_chart(chart, position)
+
+
+def _add_pie_chart(ws, label_header: str, value_header: str, title: str, position: str) -> None:
+    if ws.max_row < 3:
+        return
+    label_col = _header_index(ws, label_header)
+    value_col = _header_index(ws, value_header)
+    if not label_col or not value_col:
+        return
+    chart = PieChart()
+    chart.title = title
+    chart.height = 7
+    chart.width = 11
+    data = Reference(ws, min_col=value_col, min_row=2, max_row=ws.max_row)
+    labels = Reference(ws, min_col=label_col, min_row=3, max_row=ws.max_row)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(labels)
+    ws.add_chart(chart, position)
+
+
+def _add_stacked_bar_chart(ws, label_header: str, value_headers: list[str], title: str, position: str) -> None:
+    if ws.max_row < 3:
+        return
+    label_col = _header_index(ws, label_header)
+    value_cols = [_header_index(ws, header) for header in value_headers]
+    if not label_col or any(col is None for col in value_cols):
+        return
+    chart = BarChart()
+    chart.type = "bar"
+    chart.grouping = "stacked"
+    chart.overlap = 100
+    chart.title = title
+    chart.y_axis.title = label_header
+    chart.x_axis.title = "Soles"
+    chart.height = 8
+    chart.width = 15
+    for value_col in value_cols:
+        data = Reference(ws, min_col=value_col, min_row=2, max_row=ws.max_row)
+        chart.add_data(data, titles_from_data=True)
+    labels = Reference(ws, min_col=label_col, min_row=3, max_row=ws.max_row)
+    chart.set_categories(labels)
+    ws.add_chart(chart, position)
+
+
 def generate_proceso_1_report(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> Path:
     with db_session(db_path) as conn:
         run_id = latest_run_id(conn)
         wb = Workbook()
         wb.remove(wb.active)
+        total_rows: list[dict] = []
         for sheet, rows in [
             (
                 "PD_AC",
@@ -125,12 +277,26 @@ def generate_proceso_1_report(db_path: str | Path, output_dir: str | Path = REPO
         ]:
             ws = wb.create_sheet(sheet)
             _write_rows(ws, rows, f"Proceso 1: EC -> AC - {sheet}")
+            if sheet == "Total_Actividad":
+                total_rows = rows
+                _add_bar_chart(ws, "nombre_actividad", "costo_total_ac", "Costo total por actividad", "N3")
+                _add_pie_chart(ws, "nombre_actividad", "costo_total_ac", "Participacion del costo por actividad", "N20")
         _add_formula_sheet(
             wb,
             [
                 ("PD -> AC", "costo_PD_AC = porcentaje_AC * total_PD"),
                 ("Otros recursos -> AC", "costo_recurso_AC = importe_recurso * porcentaje_inductor"),
                 ("Soporte -> AC", "soporte_AC = mantenimiento_AC + control_calidad_AC + ingenieria_AC"),
+            ],
+        )
+        _add_summary_sheet(
+            wb,
+            "Resumen ejecutivo - Proceso 1 EC -> AC",
+            [
+                ("Costo total actividades", _sum(total_rows, "costo_total_ac")),
+                ("Actividad de mayor costo", _max_label(total_rows, "costo_total_ac", "nombre_actividad")),
+                ("Costo total PD", _sum(total_rows, "costo_pd_ac")),
+                ("Costo total soporte", _sum(total_rows, "costo_soporte_ac")),
             ],
         )
         return _save_workbook(wb, Path(output_dir) / "Reporte_Proceso_1_EC_AC.xlsx")
@@ -141,6 +307,8 @@ def generate_proceso_2_report(db_path: str | Path, output_dir: str | Path = REPO
         run_id = latest_run_id(conn)
         wb = Workbook()
         wb.remove(wb.active)
+        produccion_rows: list[dict] = []
+        soporte_rows: list[dict] = []
         for sheet, rows, title in [
             (
                 "Proceso_2_Produccion",
@@ -183,11 +351,27 @@ def generate_proceso_2_report(db_path: str | Path, output_dir: str | Path = REPO
         ]:
             ws = wb.create_sheet(sheet)
             _write_rows(ws, rows, title)
+            if sheet == "Proceso_2_Produccion":
+                produccion_rows = rows
+                _add_bar_chart(ws, "codigo_producto", "costo_conversion_ot", "Detalle costo produccion AC -> OT", "Q3")
+            if sheet == "Proceso_2_Soporte":
+                soporte_rows = rows
+                _add_bar_chart(ws, "codigo_producto", "costo_soporte_ot_detalle", "Detalle costo soporte AC -> OT", "Q3")
         _add_formula_sheet(
             wb,
             [
                 ("Produccion AC -> OT", "costo_produccion_OT = SUM(costo_conversion_AC * peso_AC_OT_produccion)"),
                 ("Soporte AC -> OT", "costo_soporte_OT = SUM(costo_soporte_AC * peso_AC_OT_soporte)"),
+            ],
+        )
+        _add_summary_sheet(
+            wb,
+            "Resumen ejecutivo - Proceso 2 AC -> OT",
+            [
+                ("Costo produccion asignado", _sum(produccion_rows, "costo_conversion_ot")),
+                ("Costo soporte asignado", _sum(soporte_rows, "costo_soporte_ot_detalle")),
+                ("Mayor detalle produccion", _max_label(produccion_rows, "costo_conversion_ot", "codigo_producto")),
+                ("Mayor detalle soporte", _max_label(soporte_rows, "costo_soporte_ot_detalle", "codigo_producto")),
             ],
         )
         return _save_workbook(wb, Path(output_dir) / "Reporte_Proceso_2_AC_OT.xlsx")
@@ -199,10 +383,29 @@ def generate_cost_sheet_report(db_path: str | Path, output_dir: str | Path = REP
         wb = Workbook()
         ws = wb.active
         ws.title = "Hoja_Costos_OT"
-        _write_rows(ws, _table(conn, "hoja_costos_ot", run_id), "Hoja de costos por OT")
+        rows = _table(conn, "hoja_costos_ot", run_id)
+        _write_rows(ws, rows, "Hoja de costos por OT")
+        _add_bar_chart(ws, "codigo_producto", "costo_total_ot", "Costo total por OT", "V3")
+        _add_stacked_bar_chart(
+            ws,
+            "codigo_producto",
+            ["cmd_ot", "costo_produccion_ot", "costo_soporte_ot", "csd_ot"],
+            "Estructura del costo por OT",
+            "V20",
+        )
         _add_formula_sheet(
             wb,
             [("Hoja de costos", "costo_total_OT = CMD + costo_produccion + costo_soporte + CSD")],
+        )
+        _add_summary_sheet(
+            wb,
+            "Resumen ejecutivo - Hoja de costos OT",
+            [
+                ("Costo total OT", _sum(rows, "costo_total_ot")),
+                ("Mayor costo por OT", _max_label(rows, "costo_total_ot", "codigo_producto")),
+                ("Costo unitario promedio", _sum(rows, "costo_unitario_ot") / len(rows) if rows else 0),
+                ("Total soporte asignado", _sum(rows, "costo_soporte_ot")),
+            ],
         )
         return _save_workbook(wb, Path(output_dir) / "Reporte_Hoja_Costos_OT.xlsx")
 
@@ -213,7 +416,10 @@ def generate_estado_resultados_report(db_path: str | Path, output_dir: str | Pat
         wb = Workbook()
         ws = wb.active
         ws.title = "Estado_Resultados"
-        _write_rows(ws, _table(conn, "estado_resultados_ot", run_id), "Estado de resultados por OT")
+        rows = _table(conn, "estado_resultados_ot", run_id)
+        _write_rows(ws, rows, "Estado de resultados por OT")
+        _add_bar_chart(ws, "codigo_producto", "margen_operativo", "Margen operativo por OT", "P3")
+        _add_bar_chart(ws, "codigo_producto", "rentabilidad_operativa", "Rentabilidad operativa por OT", "P20", y_axis="Ratio")
         _add_formula_sheet(
             wb,
             [
@@ -221,6 +427,16 @@ def generate_estado_resultados_report(db_path: str | Path, output_dir: str | Pat
                     "Estado de resultados",
                     "ventas - materia_prima_directa - costos_conversion = margen_bruto; margen_bruto - soporte = margen_operativo",
                 )
+            ],
+        )
+        _add_summary_sheet(
+            wb,
+            "Resumen ejecutivo - Estado de resultados",
+            [
+                ("Ventas netas totales", _sum(rows, "ventas_netas_soles")),
+                ("Margen operativo total", _sum(rows, "margen_operativo")),
+                ("Menor rentabilidad", _min_label(rows, "rentabilidad_operativa", "codigo_producto")),
+                ("Mayor margen operativo", _max_label(rows, "margen_operativo", "codigo_producto")),
             ],
         )
         return _save_workbook(wb, Path(output_dir) / "Reporte_Estado_Resultados.xlsx")
@@ -231,6 +447,7 @@ def generate_dashboard_report(db_path: str | Path, output_dir: str | Path = REPO
         run_id = latest_run_id(conn)
         wb = Workbook()
         wb.remove(wb.active)
+        dashboard_rows: dict[str, list[dict]] = {}
         for sheet, table in [
             ("Hoja_Costos", "hoja_costos_ot"),
             ("Estado_Resultados", "estado_resultados_ot"),
@@ -238,8 +455,20 @@ def generate_dashboard_report(db_path: str | Path, output_dir: str | Path = REPO
             ("Alertas", "dashboard_alertas"),
         ]:
             ws = wb.create_sheet(sheet)
-            _write_rows(ws, _table(conn, table, run_id), f"Dashboard - {sheet}")
+            rows = _table(conn, table, run_id)
+            dashboard_rows[sheet] = rows
+            _write_rows(ws, rows, f"Dashboard - {sheet}")
         _add_dashboard_charts(wb)
+        _add_summary_sheet(
+            wb,
+            "Resumen ejecutivo - Dashboard",
+            [
+                ("Costo total OT", _sum(dashboard_rows.get("Hoja_Costos", []), "costo_total_ot")),
+                ("Ventas netas totales", _sum(dashboard_rows.get("Estado_Resultados", []), "ventas_netas_soles")),
+                ("Actividad de mayor costo", _max_label(dashboard_rows.get("Costos_Actividad", []), "costo_total_ac", "nombre_actividad")),
+                ("Menor rentabilidad", _min_label(dashboard_rows.get("Estado_Resultados", []), "rentabilidad_operativa", "codigo_producto")),
+            ],
+        )
         return _save_workbook(wb, Path(output_dir) / "Reporte_Dashboard.xlsx")
 
 
@@ -262,6 +491,13 @@ def _add_dashboard_charts(wb: Workbook) -> None:
                 ws.add_chart(chart, "V3")
             except ValueError:
                 pass
+        _add_stacked_bar_chart(
+            ws,
+            "codigo_producto",
+            ["cmd_ot", "costo_produccion_ot", "costo_soporte_ot", "csd_ot"],
+            "Estructura de costo por OT",
+            "V20",
+        )
     if "Costos_Actividad" in wb.sheetnames:
         ws = wb["Costos_Actividad"]
         if ws.max_row >= 3:
@@ -278,6 +514,9 @@ def _add_dashboard_charts(wb: Workbook) -> None:
                 ws.add_chart(chart, "V3")
             except ValueError:
                 pass
+    if "Estado_Resultados" in wb.sheetnames:
+        ws = wb["Estado_Resultados"]
+        _add_bar_chart(ws, "codigo_producto", "rentabilidad_operativa", "Rentabilidad operativa por OT", "P3", y_axis="Ratio")
 
 
 def generate_all_reports(db_path: str | Path, output_dir: str | Path = REPORTS_DIR) -> list[Path]:

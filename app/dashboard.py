@@ -24,8 +24,18 @@ def dashboard_payload(db_path: str | Path) -> dict[str, list[dict]]:
         return payload
 
 
+def _safe_number(row: dict, field: str) -> float:
+    try:
+        return float(row.get(field) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPORTS_DIR) -> Path | None:
     try:
+        import matplotlib
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception:
         return None
@@ -33,28 +43,81 @@ def generate_dashboard_image(db_path: str | Path, output_dir: str | Path = EXPOR
     payload = dashboard_payload(db_path)
     costs = payload.get("costos_ot", [])
     activities = payload.get("costos_actividad", [])
-    if not costs and not activities:
+    results = payload.get("estado_resultados", [])
+    alerts = payload.get("alertas", [])
+    if not costs and not activities and not results:
         return None
 
     output = Path(output_dir) / "Dashboard_Costos_Frenosa.png"
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    fig.suptitle("Dashboard de Costos ABC Frenosa", fontsize=15, fontweight="bold")
+    ax_cost, ax_mix, ax_activity, ax_margin = axes.flatten()
     if costs:
-        axes[0].bar([row["codigo_ot"] for row in costs], [row["costo_total_ot"] for row in costs], color="#2E74B5")
-        axes[0].set_title("Costo total por OT")
-        axes[0].set_ylabel("Soles")
-        axes[0].tick_params(axis="x", rotation=30)
+        labels = [row.get("codigo_producto") or row.get("codigo_ot") for row in costs]
+        ax_cost.bar(labels, [_safe_number(row, "costo_total_ot") for row in costs], color="#2563EB")
+        ax_cost.set_title("Costo total por OT")
+        ax_cost.set_ylabel("Soles")
+        ax_cost.tick_params(axis="x", rotation=25)
+
+        bottoms = [0.0 for _ in costs]
+        components = [
+            ("CMD", "cmd_ot", "#0F766E"),
+            ("Produccion", "costo_produccion_ot", "#F59E0B"),
+            ("Soporte", "costo_soporte_ot", "#7C3AED"),
+            ("CSD", "csd_ot", "#64748B"),
+        ]
+        x_positions = range(len(costs))
+        for label, field, color in components:
+            values = [_safe_number(row, field) for row in costs]
+            ax_mix.bar(x_positions, values, bottom=bottoms, label=label, color=color)
+            bottoms = [base + value for base, value in zip(bottoms, values)]
+        ax_mix.set_title("Estructura de costo por OT")
+        ax_mix.set_xticks(list(x_positions), labels, rotation=25)
+        ax_mix.set_ylabel("Soles")
+        ax_mix.legend(fontsize=8)
+    else:
+        ax_cost.text(0.5, 0.5, "Sin costos OT", ha="center", va="center")
+        ax_mix.text(0.5, 0.5, "Sin estructura de costos", ha="center", va="center")
     if activities:
-        sorted_activities = sorted(activities, key=lambda row: row["costo_total_ac"], reverse=True)
-        axes[1].barh(
+        sorted_activities = sorted(activities, key=lambda row: _safe_number(row, "costo_total_ac"), reverse=True)[:7]
+        ax_activity.barh(
             [row["nombre_actividad"] for row in sorted_activities],
-            [row["costo_total_ac"] for row in sorted_activities],
-            color="#7A9E7E",
+            [_safe_number(row, "costo_total_ac") for row in sorted_activities],
+            color="#16A34A",
         )
-        axes[1].set_title("Ranking de actividades")
-        axes[1].invert_yaxis()
+        ax_activity.set_title("Ranking de actividades")
+        ax_activity.invert_yaxis()
+    else:
+        ax_activity.text(0.5, 0.5, "Sin actividades", ha="center", va="center")
+    if results:
+        labels = [row.get("codigo_producto") or row.get("ot_id") for row in results]
+        values = [_safe_number(row, "rentabilidad_operativa") * 100 for row in results]
+        ax_margin.bar(labels, values, color=["#DC2626" if value < 0 else "#0891B2" for value in values])
+        ax_margin.axhline(0, color="#334155", linewidth=0.8)
+        ax_margin.set_title("Rentabilidad operativa por OT")
+        ax_margin.set_ylabel("%")
+        ax_margin.tick_params(axis="x", rotation=25)
+    else:
+        ax_margin.text(0.5, 0.5, "Sin estado de resultados", ha="center", va="center")
+    for axis in axes.flatten():
+        axis.grid(axis="y", color="#E2E8F0", linewidth=0.8)
+        axis.set_axisbelow(True)
+    if alerts:
+        alert_lines = [
+            f"{row.get('severidad')}: {row.get('mensaje')}"
+            for row in alerts[:3]
+        ]
+        fig.text(
+            0.01,
+            0.01,
+            "Alertas: " + " | ".join(alert_lines),
+            ha="left",
+            va="bottom",
+            fontsize=9,
+            color="#334155",
+        )
     fig.tight_layout()
     fig.savefig(output, dpi=160)
     plt.close(fig)
     return output
-

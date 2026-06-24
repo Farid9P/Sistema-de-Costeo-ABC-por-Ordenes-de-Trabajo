@@ -9,6 +9,7 @@ DOCS_DIR = ROOT_DIR / "docs"
 EXPORTS_DIR = ROOT_DIR / "exports"
 REPORTS_DIR = ROOT_DIR / "reports"
 TMP_DIR = ROOT_DIR / "tmp"
+IMAGES_MODELS_DIR = ROOT_DIR / "images_models"
 DEFAULT_DB_PATH = ROOT_DIR / "costos_abc_frenosa.sqlite"
 DEFAULT_EXCEL_PATH = DATA_DIR / "frenosa_datos_entrada_abc.xlsx"
 

@@ -7,6 +7,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
 from .constants import OUTPUT_DOCUMENTS, REPORTS_DIR, ROOT_DIR
+from .dashboard import generate_dashboard_image
 from .database import db_session, latest_run_id, quote_identifier
 
 
@@ -87,6 +88,55 @@ def _add_small_table(doc: Document, title: str, rows: list[dict], limit: int = 8
             cells[idx].text = "" if row.get(header) is None else str(row.get(header))
 
 
+def _safe_number(row: dict | None, field: str) -> float:
+    if not row:
+        return 0.0
+    try:
+        return float(row.get(field) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _fmt_money(value: float) -> str:
+    return f"S/ {value:,.2f}"
+
+
+def _fmt_pct(value: float) -> str:
+    return f"{value * 100:,.2f}%"
+
+
+def _add_dashboard_picture(doc: Document, db_path: str | Path, output_dir: str | Path, title: str = "Dashboard visual") -> None:
+    doc.add_heading(title, level=2)
+    path = generate_dashboard_image(db_path, output_dir)
+    if path and path.exists():
+        doc.add_picture(str(path), width=Inches(6.4))
+        last = doc.paragraphs[-1]
+        last.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph("Figura generada desde los resultados calculados del Modelo ABC por Ordenes de Trabajo.")
+    else:
+        doc.add_paragraph("No se pudo generar la imagen del dashboard para esta ejecucion.")
+
+
+def _add_executive_metrics(doc: Document, costs: list[dict], results: list[dict], activities: list[dict]) -> None:
+    total_cost = sum(_safe_number(row, "costo_total_ot") for row in costs)
+    total_sales = sum(_safe_number(row, "ventas_netas_soles") for row in results)
+    avg_margin = (
+        sum(_safe_number(row, "rentabilidad_operativa") for row in results) / len(results)
+        if results
+        else 0.0
+    )
+    top_activity = max(activities, key=lambda row: _safe_number(row, "costo_total_ac"), default={})
+    _add_key_value_table(
+        doc,
+        [
+            ("Costo total OT", _fmt_money(total_cost)),
+            ("Ventas netas", _fmt_money(total_sales)),
+            ("Rentabilidad promedio", _fmt_pct(avg_margin)),
+            ("Actividad de mayor costo", str(top_activity.get("nombre_actividad") or "Sin datos")),
+        ],
+    )
+
+
 def _save(doc: Document, output_dir: Path, filename: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / filename
@@ -112,6 +162,12 @@ def generate_manual_descriptivo(db_path: str | Path, output_dir: str | Path = RE
             ("Salidas", "Reportes Excel, documentos Word, dashboard y pruebas funcionales."),
         ],
     )
+    doc.add_heading("Salidas generadas", level=1)
+    doc.add_paragraph(
+        "Los reportes Excel incluyen hojas de resumen, formulas, datos detallados y graficos para revisar costos por OT, "
+        "estructura de costos, actividades relevantes y rentabilidad. Los documentos Word resumen la metodologia, "
+        "los hallazgos principales y las propuestas de mejora sustentadas en los calculos."
+    )
     return _save(doc, Path(output_dir), "Manual_descriptivo.docx")
 
 
@@ -132,6 +188,14 @@ def generate_manual_usuario(db_path: str | Path, output_dir: str | Path = REPORT
     doc.add_heading("Modelos de costeo", level=1)
     doc.add_paragraph("Modelo 1 esta disponible cuando el Excel contiene actividades, inductores EC-AC y AC-OT.")
     doc.add_paragraph("Modelo 2 y Modelo 3 se muestran como opciones teoricas bloqueadas por ausencia de datos.")
+    doc.add_heading("Lectura del dashboard", level=1)
+    for item in [
+        "Revisar primero las tarjetas KPI para ubicar costo total, ventas y rentabilidad.",
+        "Usar el grafico de estructura de costo para identificar si domina CMD, produccion, soporte o CSD.",
+        "Usar el ranking de actividades para priorizar acciones de eficiencia.",
+        "Leer las alertas y recomendaciones antes de exportar informes finales.",
+    ]:
+        doc.add_paragraph(item, style="List Bullet")
     return _save(doc, Path(output_dir), "Manual_usuario.docx")
 
 
@@ -144,6 +208,13 @@ def generate_informe_pruebas(db_path: str | Path, test_results: list[dict] | Non
         _add_small_table(doc, "Detalle de pruebas", test_results, limit=50)
     else:
         doc.add_paragraph("El informe se genera desde el modulo de pruebas del aplicativo.")
+    doc.add_heading("Verificacion de salidas", level=1)
+    for item in [
+        "Los reportes Excel deben abrir con hojas de resumen, formulas y graficos visibles.",
+        "Los documentos Word deben incluir tablas de indicadores y, cuando existan datos calculados, una imagen del dashboard.",
+        "El dashboard PNG debe reflejar costos, actividades, rentabilidad y alertas.",
+    ]:
+        doc.add_paragraph(item, style="List Bullet")
     return _save(doc, Path(output_dir), "Informe_pruebas.docx")
 
 
@@ -153,8 +224,12 @@ def generate_informe_mejoras(db_path: str | Path, output_dir: str | Path = REPOR
         run_id = latest_run_id(conn)
         activities = _rows(conn, "actividad_total", run_id)
         results = _rows(conn, "estado_resultados_ot", run_id)
+        costs = _rows(conn, "hoja_costos_ot", run_id)
     top_activity = max(activities, key=lambda r: r.get("costo_total_ac") or 0, default=None)
     low_margin = min(results, key=lambda r: r.get("rentabilidad_operativa") or 0, default=None)
+    doc.add_heading("Resumen ejecutivo", level=1)
+    _add_executive_metrics(doc, costs, results, activities)
+    _add_dashboard_picture(doc, db_path, output_dir)
     doc.add_heading("Hallazgos ABC", level=1)
     if top_activity:
         doc.add_paragraph(
@@ -166,6 +241,8 @@ def generate_informe_mejoras(db_path: str | Path, output_dir: str | Path = REPOR
             f"El objeto de costo con menor rentabilidad operativa es {low_margin.get('codigo_producto')}, "
             f"con {low_margin.get('rentabilidad_operativa', 0) * 100:,.2f}%."
         )
+    _add_small_table(doc, "Hoja de costos OT", costs, limit=6)
+    _add_small_table(doc, "Estado de resultados OT", results, limit=6)
     doc.add_heading("Propuestas", level=1)
     for item in [
         "Revisar actividades con mayor consumo de MOD y otros recursos indirectos.",
@@ -206,6 +283,13 @@ def generate_analisis_funcional(db_path: str | Path, output_dir: str | Path = RE
             ("Trazabilidad", "source_trace, import_batches, import_errors y calculation_runs."),
         ],
     )
+    doc.add_heading("Reportes y graficos", level=1)
+    doc.add_paragraph(
+        "El modulo de reportes consolida salidas en Excel con hojas de resumen, graficos de barras, graficos apilados "
+        "y ranking de actividades. El dashboard PNG y los documentos Word usan los mismos resultados calculados para "
+        "mantener trazabilidad entre pantalla, reportes y documentos."
+    )
+    _add_dashboard_picture(doc, db_path, output_dir, "Vista grafica de referencia")
     doc.add_heading("Casos de uso", level=1)
     for case in [
         "Importar Excel maestro.",
