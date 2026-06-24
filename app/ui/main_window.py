@@ -32,13 +32,10 @@ IMPORTED_TABLES = [
     "materiales_directos",
     "Personal_directos",
     "servicios_directos",
-    "costo_otros_recursos(CI)",
+    "Costo_Indirectos",
     "actividades",
     "inductores",
     "ec_ac_inductores",
-    "Soporte_Mantenimiento(CI)",
-    "Soporte_Control_Calidad(CI)",
-    "Soporte_Ingenieria(CI)",
     "soporte_cc_ing_inductores",
     "ac_ot_pesos_produccion",
     "ac_ot_pesos_soporte",
@@ -46,6 +43,13 @@ IMPORTED_TABLES = [
     "reglas_calculo",
     "fuentes",
     "diccionario",
+]
+
+INDIRECT_COST_TABLES = [
+    "costo_otros_recursos(CI)",
+    "Soporte_Mantenimiento(CI)",
+    "Soporte_Control_Calidad(CI)",
+    "Soporte_Ingenieria(CI)",
 ]
 
 DETAIL_MODULES = {"proceso1", "proceso2_produccion", "proceso2_soporte", "hoja", "estado"}
@@ -62,6 +66,7 @@ class CostosABCApp(tk.Tk):
         self.status_text = tk.StringVar(value="Seleccione, valide e importe un Excel maestro para iniciar.")
         self.model_var = tk.StringVar(value="")
         self.table_var = tk.StringVar(value=IMPORTED_TABLES[0])
+        self.indirect_cost_table_var = tk.StringVar(value=INDIRECT_COST_TABLES[0])
         self.model_statuses: list[CostingModelStatus] = []
         self.trees: dict[str, ttk.Treeview] = {}
         self.tree_row_data: dict[str, dict[str, dict]] = {}
@@ -149,7 +154,7 @@ class CostosABCApp(tk.Tk):
         self.model_reason.grid(row=1, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
         model_box.columnconfigure(0, weight=1)
 
-        note = ttk.LabelFrame(tab, text="Criterio academico de modelos", padding=10, style="Section.TLabelframe")
+        note = ttk.LabelFrame(tab, text="Grafico del modelo de costeo", padding=10, style="Section.TLabelframe")
         note.pack(fill=tk.BOTH, expand=True, pady=12)
         self.criteria_canvas = tk.Canvas(note, bg="#FFFFFF", highlightthickness=1, highlightbackground="#CBD5E1")
         self.criteria_canvas.pack(fill=tk.BOTH, expand=True)
@@ -166,9 +171,22 @@ class CostosABCApp(tk.Tk):
         ttk.Label(top, text="Tabla:").pack(side=tk.LEFT)
         combo = ttk.Combobox(top, textvariable=self.table_var, values=IMPORTED_TABLES, state="readonly", width=42)
         combo.pack(side=tk.LEFT, padx=8)
-        combo.bind("<<ComboboxSelected>>", lambda _event: self.load_selected_imported_table())
-        ttk.Button(top, text="Actualizar", command=self.load_selected_imported_table).pack(side=tk.LEFT)
+        combo.bind("<<ComboboxSelected>>", lambda _event: self.on_imported_table_selected())
+        self.indirect_cost_frame = ttk.Frame(top)
+        ttk.Label(self.indirect_cost_frame, text="Tipo CI:").pack(side=tk.LEFT)
+        indirect_combo = ttk.Combobox(
+            self.indirect_cost_frame,
+            textvariable=self.indirect_cost_table_var,
+            values=INDIRECT_COST_TABLES,
+            state="readonly",
+            width=34,
+        )
+        indirect_combo.pack(side=tk.LEFT, padx=(6, 0))
+        indirect_combo.bind("<<ComboboxSelected>>", lambda _event: self.load_selected_imported_table())
+        self.refresh_table_button = ttk.Button(top, text="Actualizar", command=self.load_selected_imported_table)
+        self.refresh_table_button.pack(side=tk.LEFT)
         ttk.Button(top, text="Ver Dashboard", command=self.show_dashboard_tab).pack(side=tk.LEFT, padx=(8, 0))
+        self.update_indirect_cost_selector()
         tree = self._make_tree(tab)
         self.trees["datos"] = tree
 
@@ -487,8 +505,29 @@ class CostosABCApp(tk.Tk):
             messagebox.showerror("Calculo ABC", str(exc))
             self.status_text.set(f"Error de calculo: {exc}")
 
+    def on_imported_table_selected(self) -> None:
+        self.update_indirect_cost_selector()
+        self.load_selected_imported_table()
+
+    def update_indirect_cost_selector(self) -> None:
+        if not hasattr(self, "indirect_cost_frame"):
+            return
+        if self.table_var.get() == "Costo_Indirectos":
+            if not self.indirect_cost_frame.winfo_ismapped():
+                pack_options = {"side": tk.LEFT, "padx": (0, 8)}
+                if hasattr(self, "refresh_table_button"):
+                    pack_options["before"] = self.refresh_table_button
+                self.indirect_cost_frame.pack(**pack_options)
+        else:
+            self.indirect_cost_frame.pack_forget()
+
+    def selected_imported_table_name(self) -> str:
+        if self.table_var.get() == "Costo_Indirectos":
+            return self.indirect_cost_table_var.get()
+        return self.table_var.get()
+
     def load_selected_imported_table(self) -> None:
-        table = self.table_var.get()
+        table = self.selected_imported_table_name()
         try:
             with db_session(self.db_path) as conn:
                 rows = [dict(row) for row in conn.execute(f"SELECT * FROM {quote_identifier(table)} LIMIT 500").fetchall()]

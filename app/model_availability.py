@@ -53,7 +53,7 @@ def evaluate_models(db_path: str | Path) -> list[CostingModelStatus]:
         CostingModelStatus(
             code="MODELO_2",
             label="Modelo 2",
-            visual_name="Modelo 2 teorico",
+            visual_name="Modelo 2 ABC",
             status="No disponible por datos faltantes",
             available=False,
             reason=MODEL_2_BLOCK_MESSAGE,
