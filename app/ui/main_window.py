@@ -78,6 +78,7 @@ class CostosABCApp(tk.Tk):
         self.dashboard_message: ttk.Label | None = None
         self.dashboard_chart_frame = None
         self.dashboard_insights_text: tk.Text | None = None
+        self.proposal_text: tk.Text | None = None
         self.criteria_image: tk.PhotoImage | None = None
         self.criteria_source_image: tk.PhotoImage | None = None
         self.criteria_image_model_code: str | None = None
@@ -124,6 +125,7 @@ class CostosABCApp(tk.Tk):
         self._build_table_tab("Hoja de costos OT", "hoja")
         self._build_table_tab("Estado de resultados", "estado")
         self._build_dashboard_tab()
+        self._build_improvement_proposal_tab()
         self._build_outputs_tab()
         self.hide_module_tabs()
 
@@ -303,9 +305,9 @@ class CostosABCApp(tk.Tk):
 
     def _build_outputs_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=12)
-        self.notebook.add(tab, text="Reportes y documentos")
-        self.module_tabs.append((tab, "Reportes y documentos"))
-        ttk.Label(tab, text=f"Reportes y documentos se guardan en: {REPORTS_DIR}", style="Subtitle.TLabel").pack(anchor=tk.W)
+        self.notebook.add(tab, text="Reportes")
+        self.module_tabs.append((tab, "Reportes"))
+        ttk.Label(tab, text=f"Reportes se guardan en: {REPORTS_DIR}", style="Subtitle.TLabel").pack(anchor=tk.W)
         actions = ttk.Frame(tab)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions, text="Generar reportes Excel", command=self.generate_reports).pack(side=tk.LEFT, padx=4)
@@ -313,6 +315,37 @@ class CostosABCApp(tk.Tk):
         ttk.Button(actions, text="Generar dashboard PNG", command=self.generate_dashboard_png).pack(side=tk.LEFT, padx=4)
         ttk.Button(actions, text="Ejecutar informe de pruebas", command=self.run_tests).pack(side=tk.LEFT, padx=4)
         self.trees["salidas"] = self._make_tree(tab)
+
+    def _build_improvement_proposal_tab(self) -> None:
+        tab = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(tab, text="Propuesta de mejoras")
+        self.module_tabs.append((tab, "Propuesta de mejoras"))
+        tab.rowconfigure(2, weight=1)
+        tab.columnconfigure(0, weight=1)
+
+        ttk.Label(tab, text="Informe editable de propuestas de mejora", style="Subtitle.TLabel").grid(row=0, column=0, sticky=tk.W)
+        actions = ttk.Frame(tab)
+        actions.grid(row=1, column=0, sticky=tk.EW, pady=(8, 0))
+        ttk.Button(actions, text="Generar propuesta base", command=self.generate_improvement_proposal).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(actions, text="Guardar propuesta editada", command=self.save_improvement_proposal).pack(side=tk.LEFT, padx=6)
+
+        editor = ttk.Frame(tab)
+        editor.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
+        editor.rowconfigure(0, weight=1)
+        editor.columnconfigure(0, weight=1)
+        self.proposal_text = tk.Text(
+            editor,
+            wrap=tk.WORD,
+            bg="#FFFFFF",
+            fg="#0F172A",
+            font=("Segoe UI", 10),
+            undo=True,
+        )
+        scroll = ttk.Scrollbar(editor, orient=tk.VERTICAL, command=self.proposal_text.yview)
+        self.proposal_text.configure(yscrollcommand=scroll.set)
+        self.proposal_text.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.proposal_text.insert("1.0", "Ejecute el calculo ABC y genere la propuesta base.")
 
     def _make_tree(self, parent) -> ttk.Treeview:
         frame = ttk.Frame(parent)
@@ -1195,6 +1228,118 @@ class CostosABCApp(tk.Tk):
                     "Mantener documentado CSD = 0 mientras el Excel maestro no registre servicios directos; no inventar servicios no sustentados."
                 )
         return recommendations
+
+    def generate_improvement_proposal(self) -> None:
+        if self.proposal_text is None:
+            return
+        payload = dashboard_payload(self.db_path)
+        text = self.build_improvement_proposal_text(payload)
+        self.proposal_text.delete("1.0", tk.END)
+        self.proposal_text.insert("1.0", text)
+        self.proposal_text.edit_reset()
+        self.status_text.set("Propuesta de mejoras generada para revision y edicion.")
+
+    def save_improvement_proposal(self) -> None:
+        if self.proposal_text is None:
+            return
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        path = filedialog.asksaveasfilename(
+            title="Guardar propuesta de mejoras",
+            initialdir=str(REPORTS_DIR),
+            initialfile="Propuesta_mejoras_editable.txt",
+            defaultextension=".txt",
+            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")],
+        )
+        if not path:
+            return
+        Path(path).write_text(self.proposal_text.get("1.0", tk.END).strip() + "\n", encoding="utf-8")
+        messagebox.showinfo("Propuesta de mejoras", f"Propuesta guardada en:\n{path}")
+        self.status_text.set(f"Propuesta de mejoras guardada: {path}")
+
+    def build_improvement_proposal_text(self, payload: dict) -> str:
+        if not payload:
+            return (
+                "INFORME DE PROPUESTAS DE MEJORA\n"
+                "Rol: Gerencia de Contabilidad de Costos\n\n"
+                "No hay una ejecucion de calculo disponible. Ejecute el Modelo ABC por Ordenes de Trabajo "
+                "para generar una propuesta sustentada en resultados."
+            )
+        costs = payload.get("costos_ot", [])
+        activities = payload.get("costos_actividad", [])
+        estado = payload.get("estado_resultados", [])
+        alerts = payload.get("alertas", [])
+        period_text = self.format_dashboard_period(payload.get("periodo", [])) or "Periodo no especificado"
+        total_cost = sum(self.as_number(row, "costo_total_ot") for row in costs)
+        total_sales = sum(self.as_number(row, "ventas_netas_soles") for row in estado)
+        avg_margin = (
+            sum(self.as_number(row, "rentabilidad_operativa") for row in estado) / len(estado)
+            if estado
+            else 0.0
+        )
+        top_activity = max(activities, key=lambda row: self.as_number(row, "costo_total_ac")) if activities else {}
+        lowest_margin = min(estado, key=lambda row: self.as_number(row, "rentabilidad_operativa")) if estado else {}
+        highest_cost = max(costs, key=lambda row: self.as_number(row, "costo_total_ot")) if costs else {}
+        recommendations = self.dashboard_recommendations(costs, activities, estado)
+
+        lines = [
+            "INFORME DE PROPUESTAS DE MEJORA",
+            "Rol: Gerencia de Contabilidad de Costos",
+            "",
+            "1. Alcance ejecutivo",
+            "Este informe editable presenta acciones de mejora orientadas a elevar la rentabilidad de la empresa evaluada, usando como base los resultados del sistema ABC por ordenes de trabajo.",
+            f"Periodo evaluado: {period_text}",
+            "",
+            "2. Diagnostico de costos y rentabilidad",
+            f"Costo total acumulado de OT: S/ {total_cost:,.2f}",
+            f"Ventas netas registradas: S/ {total_sales:,.2f}",
+            f"Rentabilidad operativa promedio: {avg_margin * 100:,.2f}%",
+        ]
+        if highest_cost:
+            lines.append(
+                f"OT/producto con mayor costo total: {highest_cost.get('codigo_producto') or highest_cost.get('codigo_ot') or highest_cost.get('ot_id')} "
+                f"(S/ {self.as_number(highest_cost, 'costo_total_ot'):,.2f})."
+            )
+        if top_activity:
+            lines.append(
+                f"Actividad con mayor costo: {top_activity.get('nombre_actividad') or top_activity.get('codigo_actividad')} "
+                f"(S/ {self.as_number(top_activity, 'costo_total_ac'):,.2f})."
+            )
+        if lowest_margin:
+            lines.append(
+                f"OT/producto con menor rentabilidad: {lowest_margin.get('codigo_producto') or lowest_margin.get('ot_id')} "
+                f"({self.as_number(lowest_margin, 'rentabilidad_operativa') * 100:,.2f}%)."
+            )
+
+        lines.extend(["", "3. Alertas de gestion"])
+        if alerts:
+            for alert in alerts:
+                value = self.as_number(alert, "valor_referencia")
+                value_text = f" Valor de referencia: {self.format_number(value)}." if value else ""
+                lines.append(f"- {alert.get('severidad')}: {alert.get('mensaje')}.{value_text}")
+        else:
+            lines.append("- No se registran alertas calculadas para la ejecucion actual.")
+
+        lines.extend(["", "4. Propuestas de mejora con impacto positivo en rentabilidad"])
+        if recommendations:
+            for index, recommendation in enumerate(recommendations, start=1):
+                lines.append(f"{index}. {recommendation}")
+        else:
+            lines.append("1. Completar el ciclo de importacion y calculo para sustentar propuestas cuantitativas.")
+
+        lines.extend(
+            [
+                "",
+                "5. Plan de accion sugerido",
+                "1. Validar con responsables operativos las actividades de mayor costo y sus inductores.",
+                "2. Priorizar mejoras en actividades o recursos con mayor participacion en el costo total.",
+                "3. Revisar precios, mezcla comercial y condiciones productivas de las OT con menor margen.",
+                "4. Monitorear el impacto mensual con el mismo modelo ABC para comparar costo, margen y rentabilidad.",
+                "",
+                "6. Espacio para ajustes del usuario",
+                "Edite, agregue o elimine propuestas segun el criterio gerencial, restricciones operativas y objetivos de la empresa.",
+            ]
+        )
+        return "\n".join(lines)
 
     def build_dashboard_figure(self, payload: dict) -> Figure:
         costs = payload.get("costos_ot", [])
