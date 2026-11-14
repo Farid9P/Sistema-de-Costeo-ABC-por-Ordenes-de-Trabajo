@@ -9,7 +9,7 @@ if errorlevel 1 (
 )
 echo.
 if exist "dist\Sistema_Costos_ABC_Frenosa.exe" (
-    echo Ejecutable generado: dist\Sistema_Costos_ABC_Frenosa.exe
+    echo Ejecutable unico generado: dist\Sistema_Costos_ABC_Frenosa.exe
 ) else (
     echo No se pudo generar el ejecutable. Revise los mensajes anteriores.
     exit /b 1

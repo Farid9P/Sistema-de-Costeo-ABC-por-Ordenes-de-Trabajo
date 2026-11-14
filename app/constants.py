@@ -1,15 +1,30 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+def _resource_dir() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent.parent
+
+
+def _runtime_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return _resource_dir()
+
+
+RESOURCE_DIR = _resource_dir()
+ROOT_DIR = _runtime_dir()
+SOURCE_ROOT_DIR = RESOURCE_DIR / "app_source" if (RESOURCE_DIR / "app_source").exists() else RESOURCE_DIR
 DATA_DIR = ROOT_DIR / "data"
 DOCS_DIR = ROOT_DIR / "docs"
 EXPORTS_DIR = ROOT_DIR / "exports"
 REPORTS_DIR = ROOT_DIR / "reports"
 TMP_DIR = ROOT_DIR / "tmp"
-IMAGES_MODELS_DIR = ROOT_DIR / "images_models"
+IMAGES_MODELS_DIR = RESOURCE_DIR / "images_models"
 DEFAULT_DB_PATH = ROOT_DIR / "costos_abc_frenosa.sqlite"
 DEFAULT_EXCEL_PATH = DATA_DIR / "frenosa_datos_entrada_abc.xlsx"
 

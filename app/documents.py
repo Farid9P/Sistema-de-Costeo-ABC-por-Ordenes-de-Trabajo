@@ -6,7 +6,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
 
-from .constants import OUTPUT_DOCUMENTS, REPORTS_DIR, ROOT_DIR
+from .constants import OUTPUT_DOCUMENTS, REPORTS_DIR, SOURCE_ROOT_DIR
 from .dashboard import generate_dashboard_image
 from .database import db_session, latest_run_id, quote_identifier
 
@@ -334,7 +334,7 @@ def generate_codigo_principal(db_path: str | Path, output_dir: str | Path = REPO
         "app/tests_runner.py",
     ]
     for rel in modules:
-        path = ROOT_DIR / rel
+        path = SOURCE_ROOT_DIR / rel
         doc.add_heading(rel, level=1)
         if path.exists():
             text = path.read_text(encoding="utf-8", errors="ignore")

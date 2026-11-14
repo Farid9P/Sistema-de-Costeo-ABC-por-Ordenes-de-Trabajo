@@ -58,10 +58,12 @@ En Windows:
 build_windows.bat
 ```
 
-El ejecutable final esperado queda en:
+La compilacion genera un unico archivo ejecutable:
 
 ```text
 dist\Sistema_Costos_ABC_Frenosa.exe
 ```
+
+Para usarlo en otra maquina, copie solo ese `.exe`. No requiere internet, Python ni instalacion de librerias. Al ser `onefile`, puede tardar unos segundos adicionales al abrir porque Windows extrae dependencias internas en una carpeta temporal.
 
 El sistema no contiene datos calculados hardcodeados. Los calculos se reproducen desde el Excel maestro importado y se guardan en SQLite local.

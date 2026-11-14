@@ -13,9 +13,17 @@ PYTHON_ROOT = Path(sys.base_prefix)
 PYTHON_DLLS = PYTHON_ROOT / "DLLs"
 PYTHON_LIB = PYTHON_ROOT / "Lib"
 PYTHON_TCL = PYTHON_ROOT / "tcl"
+SOURCE_MODULES = [
+    "app/importers.py",
+    "app/costing_mod.py",
+    "app/costing_abc.py",
+    "app/reports.py",
+    "app/documents.py",
+    "app/tests_runner.py",
+]
 
 
-def verify_executable_contents(exe_path: Path) -> None:
+def verify_onefile_contents(exe_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -37,6 +45,8 @@ def verify_executable_contents(exe_path: Path) -> None:
         "tcl\\tcl8.6\\init.tcl",
         "images_models\\modelo1.png",
         "images_models\\modelo2.png",
+        "app_source\\app\\importers.py",
+        "app_source\\app\\costing_abc.py",
     ]
     missing = [entry for entry in required_entries if entry.lower() not in content]
     if missing:
@@ -60,8 +70,12 @@ def main() -> None:
         "-m",
         "PyInstaller",
         "--noconfirm",
+        "--clean",
         "--onefile",
         "--windowed",
+        "--noupx",
+        "--optimize",
+        "1",
         "--name",
         EXE_NAME,
         "--runtime-hook",
@@ -106,16 +120,22 @@ def main() -> None:
         "tkinter.messagebox",
         "--hidden-import",
         "matplotlib.backends.backend_tkagg",
-        str(ROOT / "app" / "main.py"),
+        "--exclude-module",
+        "pandas",
+        "--exclude-module",
+        "lxml.isoschematron",
     ]
+    for source_module in SOURCE_MODULES:
+        cmd.extend(["--add-data", f"{ROOT / source_module};app_source/app"])
+    cmd.append(str(ROOT / "app" / "main.py"))
     print("Compilando ejecutable offline...")
     print(" ".join(str(part) for part in cmd))
     subprocess.check_call(cmd, cwd=ROOT)
-    exe_path = ROOT / "dist" / f"{EXE_NAME}.exe"
+    exe_path = distpath / f"{EXE_NAME}.exe"
     if not exe_path.exists():
         raise SystemExit("PyInstaller termino, pero no se encontro el ejecutable esperado.")
-    verify_executable_contents(exe_path)
-    print(f"Ejecutable generado: {exe_path}")
+    verify_onefile_contents(exe_path)
+    print(f"Ejecutable unico generado: {exe_path}")
 
 
 if __name__ == "__main__":

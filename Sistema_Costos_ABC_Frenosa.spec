@@ -9,6 +9,14 @@ PYTHON_ROOT = Path(sys.base_prefix)
 PYTHON_DLLS = PYTHON_ROOT / "DLLs"
 PYTHON_LIB = PYTHON_ROOT / "Lib"
 PYTHON_TCL = PYTHON_ROOT / "tcl"
+SOURCE_MODULES = [
+    "app/importers.py",
+    "app/costing_mod.py",
+    "app/costing_abc.py",
+    "app/reports.py",
+    "app/documents.py",
+    "app/tests_runner.py",
+]
 
 a = Analysis(
     [str(ROOT / "app" / "main.py")],
@@ -27,6 +35,7 @@ a = Analysis(
         (str(PYTHON_TCL / "tcl8"), "tcl/tcl8"),
         (str(PYTHON_TCL / "dde1.4"), "tcl/dde1.4"),
         (str(PYTHON_TCL / "reg1.3"), "tcl/reg1.3"),
+        *[(str(ROOT / source), "app_source/app") for source in SOURCE_MODULES],
     ],
     hiddenimports=[
         "tkinter",
@@ -34,13 +43,17 @@ a = Analysis(
         "tkinter.ttk",
         "tkinter.filedialog",
         "tkinter.messagebox",
+        "matplotlib.backends.backend_tkagg",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[str(ROOT / "app" / "pyinstaller_tk_runtime.py")],
-    excludes=[],
+    excludes=[
+        "pandas",
+        "lxml.isoschematron",
+    ],
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 pyz = PYZ(a.pure)
 
@@ -54,7 +67,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
