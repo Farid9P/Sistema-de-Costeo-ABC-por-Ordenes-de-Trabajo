@@ -1,0 +1,54 @@
+Datos y trazabilidad
+1. ¿Qué empresa, periodo y modelo de costeo se están analizando?
+2. ¿Qué productos y órdenes de trabajo están registrados?
+3. ¿Cuántas unidades se produjeron en cada OT?
+4. ¿Qué actividades productivas intervienen en el costeo?
+5. ¿De qué hoja del Excel y fuente proviene un dato?
+6. ¿Qué observaciones acompañan a un dato importado o cálculo?
+7. ¿El Excel maestro tiene las hojas y columnas requeridas?
+8. ¿Hay errores de relación o advertencias en los porcentajes de los inductores?
+Material directo y personal
+9. ¿Cuánto material directo consumió {OT}?
+10. ¿Qué cantidad y costo unitario se usaron para cada material?
+11. ¿Cuál es el CMD total de {OT}?
+12. ¿Qué costo unitario promedio registrado se utilizó para valorar la salida del material?
+13. ¿Hay servicios directos asignados a {OT}? ¿Por qué el CSD figura en cero?
+14. ¿Cuál es el tiempo estándar de cada actividad?
+15. ¿Cuál es el factor de distribución de la MOD?
+16. ¿Qué porcentaje de la MOD corresponde a cada actividad?
+17. ¿Cuánto cuesta la MOD asignada a cada actividad?
+Recursos indirectos y soporte
+18. ¿Qué recursos indirectos se importaron y cuál es su importe?
+19. ¿Qué porcentaje de cada recurso se asignó a {actividad}?
+20. ¿Cuánto costo indirecto recibió {actividad} de {recurso}?
+21. ¿Cuál es el total de otros recursos indirectos por actividad?
+22. ¿Cuánto mantenimiento corresponde a cada actividad?
+23. ¿Cuál es el costo total de control de calidad y cómo se distribuyó?
+24. ¿Cuál es el costo total de ingeniería y cómo se distribuyó?
+25. ¿Cuál es el costo total de soporte por actividad?
+26. ¿Cuánto cuesta en total {actividad} y cuánto corresponde a MOD, otros recursos y soporte?
+27. ¿Cuáles son las actividades de mayor costo?
+Asignación a órdenes y hoja de costos
+28. ¿Qué peso de distribución se aplicó de {actividad} a {OT}?
+29. ¿Cuánto costo de producción transfirió {actividad} a {OT}?
+30. ¿Cuánto costo de soporte transfirió {actividad} a {OT}?
+31. ¿Cuánta MOD, recursos indirectos y soporte recibió {OT}?
+32. ¿Cuál es el costo total de {OT}?
+33. ¿Cuál es el costo unitario de {OT}?
+34. ¿Cómo se compone el costo de {OT} entre CMD, producción, soporte y CSD?
+35. ¿Qué componente tiene mayor participación en el costo de {OT}?
+36. ¿Qué OT tiene el mayor costo total o unitario?
+Ventas y rentabilidad
+37. ¿Cuáles fueron las ventas netas de cada OT?
+38. ¿Cuál es el margen bruto de {OT}?
+39. ¿Cuál es el margen operativo de {OT}?
+40. ¿Cuál es la rentabilidad operativa porcentual de {OT}?
+41. ¿Qué producto tiene la mayor o menor rentabilidad operativa?
+42. ¿Qué OT conviene revisar primero por su estructura de costos o bajo margen?
+43. ¿Qué alertas y propuestas de mejora genera el dashboard?
+Salidas del sistema
+44. ¿Qué muestra el reporte de asignación de recursos a actividades?
+45. ¿Qué muestra la hoja de costos o el estado de resultados de una OT?
+46. ¿Qué gráficos e indicadores contiene el dashboard?
+47. ¿Qué reportes Excel y documentos Word puede generar el aplicativo?
+48. ¿Qué resultados arrojó el informe de pruebas funcionales?

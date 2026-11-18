@@ -1,0 +1,314 @@
+{
+ "2010-01": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-01",
+   "cantidad_kg": 14124.0,
+   "costo_unitario_soles": 3.214
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-01",
+   "cantidad_kg": 15414.0,
+   "costo_unitario_soles": 5.4568
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-01",
+   "cantidad_kg": 6007.0,
+   "costo_unitario_soles": 5.0924
+  }
+ ],
+ "2010-02": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-02",
+   "cantidad_kg": 12979.0,
+   "costo_unitario_soles": 3.2372
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-02",
+   "cantidad_kg": 14092.0,
+   "costo_unitario_soles": 5.5315
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-02",
+   "cantidad_kg": 5532.0,
+   "costo_unitario_soles": 5.1157
+  }
+ ],
+ "2010-03": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-03",
+   "cantidad_kg": 23668.0,
+   "costo_unitario_soles": 3.2044
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-03",
+   "cantidad_kg": 26423.0,
+   "costo_unitario_soles": 5.4733
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-03",
+   "cantidad_kg": 10116.0,
+   "costo_unitario_soles": 5.0905
+  }
+ ],
+ "2010-04": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-04",
+   "cantidad_kg": 31303.0,
+   "costo_unitario_soles": 3.17
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-04",
+   "cantidad_kg": 35231.0,
+   "costo_unitario_soles": 5.452
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-04",
+   "cantidad_kg": 13594.0,
+   "costo_unitario_soles": 5.0341
+  }
+ ],
+ "2010-05": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-05",
+   "cantidad_kg": 35884.0,
+   "costo_unitario_soles": 3.1719
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-05",
+   "cantidad_kg": 40516.0,
+   "costo_unitario_soles": 5.448
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-05",
+   "cantidad_kg": 15017.0,
+   "costo_unitario_soles": 5.0303
+  }
+ ],
+ "2010-06": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-06",
+   "cantidad_kg": 38937.0,
+   "costo_unitario_soles": 3.1996
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-06",
+   "cantidad_kg": 44039.0,
+   "costo_unitario_soles": 5.4661
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-06",
+   "cantidad_kg": 15491.0,
+   "costo_unitario_soles": 5.0544
+  }
+ ],
+ "2010-07": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-07",
+   "cantidad_kg": 38174,
+   "costo_unitario_soles": 3.2045
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-07",
+   "cantidad_kg": 44039,
+   "costo_unitario_soles": 5.481
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-07",
+   "cantidad_kg": 15807,
+   "costo_unitario_soles": 5.0792
+  }
+ ],
+ "2010-08": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-08",
+   "cantidad_kg": 41228.0,
+   "costo_unitario_soles": 3.2051
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-08",
+   "cantidad_kg": 48443.0,
+   "costo_unitario_soles": 5.5061
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-08",
+   "cantidad_kg": 16123.0,
+   "costo_unitario_soles": 5.0711
+  }
+ ],
+ "2010-09": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-09",
+   "cantidad_kg": 43900.0,
+   "costo_unitario_soles": 3.1304
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-09",
+   "cantidad_kg": 51966.0,
+   "costo_unitario_soles": 5.3707
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-09",
+   "cantidad_kg": 16597.0,
+   "costo_unitario_soles": 4.9566
+  }
+ ],
+ "2010-10": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-10",
+   "cantidad_kg": 41991.0,
+   "costo_unitario_soles": 3.2742
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-10",
+   "cantidad_kg": 49324.0,
+   "costo_unitario_soles": 5.6106
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-10",
+   "cantidad_kg": 15807.0,
+   "costo_unitario_soles": 5.1677
+  }
+ ],
+ "2010-11": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-11",
+   "cantidad_kg": 30539.0,
+   "costo_unitario_soles": 4.1603
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-11",
+   "cantidad_kg": 34350.0,
+   "costo_unitario_soles": 7.0919
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-11",
+   "cantidad_kg": 13436.0,
+   "costo_unitario_soles": 6.5817
+  }
+ ],
+ "2010-12": [
+  {
+   "material_id": "MAT001",
+   "material": "Material SW-50",
+   "ot_id": "OT001",
+   "codigo_ot": "OT-FRENOSA-SW50-2010-12",
+   "cantidad_kg": 34357.0,
+   "costo_unitario_soles": 3.5832
+  },
+  {
+   "material_id": "MAT002",
+   "material": "Material FRE-9000",
+   "ot_id": "OT002",
+   "codigo_ot": "OT-FRENOSA-FRE9000-2010-12",
+   "cantidad_kg": 38754.0,
+   "costo_unitario_soles": 6.1169
+  },
+  {
+   "material_id": "MAT003",
+   "material": "Material FRE-9002",
+   "ot_id": "OT003",
+   "codigo_ot": "OT-FRENOSA-FRE9002-2010-12",
+   "cantidad_kg": 14542.0,
+   "costo_unitario_soles": 5.6721
+  }
+ ]
+}

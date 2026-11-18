@@ -1,0 +1,41 @@
+[
+ {
+  "material_id": "MAT001",
+  "ot_id": "OT001",
+  "objeto_costo_id": "OT001",
+  "material": "Material SW-50",
+  "cantidad_kg": 38174,
+  "costo_unitario_soles": 3.2045,
+  "clasificacion": "CMD",
+  "tratamiento": "Directo a la OT",
+  "fuente_cuadro": "Cuadro 1",
+  "fuente": "Cherres Juárez (2010), Un caso de aplicación del sistema ABC en una empresa peruana: Frenosa, Contabilidad y Negocios, PUCP",
+  "observacion": "No se incluye costo total; el sistema debe calcular cantidad × costo unitario."
+ },
+ {
+  "material_id": "MAT002",
+  "ot_id": "OT002",
+  "objeto_costo_id": "OT002",
+  "material": "Material FRE-9000",
+  "cantidad_kg": 44039,
+  "costo_unitario_soles": 5.481,
+  "clasificacion": "CMD",
+  "tratamiento": "Directo a la OT",
+  "fuente_cuadro": "Cuadro 1",
+  "fuente": "Cherres Juárez (2010), Un caso de aplicación del sistema ABC en una empresa peruana: Frenosa, Contabilidad y Negocios, PUCP",
+  "observacion": "No se incluye costo total; el sistema debe calcular cantidad × costo unitario."
+ },
+ {
+  "material_id": "MAT003",
+  "ot_id": "OT003",
+  "objeto_costo_id": "OT003",
+  "material": "Material FRE-9002",
+  "cantidad_kg": 15807,
+  "costo_unitario_soles": 5.0792,
+  "clasificacion": "CMD",
+  "tratamiento": "Directo a la OT",
+  "fuente_cuadro": "Cuadro 1",
+  "fuente": "Cherres Juárez (2010), Un caso de aplicación del sistema ABC en una empresa peruana: Frenosa, Contabilidad y Negocios, PUCP",
+  "observacion": "No se incluye costo total; el sistema debe calcular cantidad × costo unitario."
+ }
+]
